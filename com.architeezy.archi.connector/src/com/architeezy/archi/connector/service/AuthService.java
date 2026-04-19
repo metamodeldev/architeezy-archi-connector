@@ -179,6 +179,31 @@ public final class AuthService {
     }
 
     /**
+     * Returns the first profile whose server URL matches the given URL, or
+     * {@code null} if none is found. Prefers a connected profile over others.
+     *
+     * @param serverUrl The server URL to match.
+     * @return A matching profile, or null.
+     */
+    public synchronized ConnectionProfile findProfileForServer(String serverUrl) {
+        if (serverUrl == null) {
+            return null;
+        }
+        ConnectionProfile fallback = null;
+        for (var p : profiles) {
+            if (serverUrl.equals(p.getServerUrl())) {
+                if (p.getStatus() == ProfileStatus.CONNECTED) {
+                    return p;
+                }
+                if (fallback == null) {
+                    fallback = p;
+                }
+            }
+        }
+        return fallback;
+    }
+
+    /**
      * Returns the authorization endpoint for the given profile.
      *
      * @param profileName The name of the profile.

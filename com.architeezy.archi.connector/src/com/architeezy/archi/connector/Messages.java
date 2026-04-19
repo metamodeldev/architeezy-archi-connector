@@ -135,6 +135,24 @@ public final class Messages extends NLS {
     // WizardMessages
     public static String WizardMessages_notSignedIn;
 
+    // ModelTreeDecorator
+    public static String Decorator_updateTooltip;
+
+    // PullFromArchiteezyHandler
+    public static String PullHandler_title;
+
+    public static String PullHandler_noModel;
+
+    public static String PullHandler_noUpdate;
+
+    public static String PullHandler_dirtyConfirm;
+
+    public static String PullHandler_jobName;
+
+    public static String PullHandler_success;
+
+    public static String PullHandler_failed;
+
     private static final String BUNDLE_NAME = "com.architeezy.archi.connector.messages"; //$NON-NLS-1$
 
     static {

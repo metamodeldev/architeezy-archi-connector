@@ -23,5 +23,6 @@ Export-Package: com.architeezy.archi.connector,
  com.architeezy.archi.connector.io,
  com.architeezy.archi.connector.service,
  com.architeezy.archi.connector.handlers,
+ com.architeezy.archi.connector.navigator,
  com.architeezy.archi.connector.wizard
 Automatic-Module-Name: com.architeezy.archi.connector

@@ -10,6 +10,7 @@
 package com.architeezy.archi.connector.service;
 
 import java.io.File;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -236,6 +237,106 @@ public final class RepositoryService {
     public List<RemoteProject> listProjects(ConnectionProfile profile) throws Exception {
         var token = AuthService.INSTANCE.getValidAccessToken(profile);
         return client.listProjects(profile.getServerUrl(), token);
+    }
+
+    // -----------------------------------------------------------------------
+    // Pull (download + overwrite existing open model)
+
+    /**
+     * Downloads the latest model content from the Architeezy server and
+     * overwrites the local file, replacing the model that is currently open in
+     * the Archi editor. The local model is closed without saving before the new
+     * content is written.
+     *
+     * <p>
+     * Steps:
+     * <ol>
+     * <li>Fetch metadata and download content.</li>
+     * <li>Close the existing model (no save).</li>
+     * <li>Deserialize the new content to the same file.</li>
+     * <li>Open the new model, set connector properties, and save.</li>
+     * <li>Save a new base snapshot and clear the update indicator.</li>
+     * </ol>
+     *
+     * @param model The locally open model to replace.
+     * @param monitor Progress monitor.
+     * @return The newly opened {@link IArchimateModel}.
+     * @throws IllegalStateException If the model is not tracked
+     * @throws Exception If the pull fails.
+     */
+    public IArchimateModel pullModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
+        var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
+        if (modelUrl == null) {
+            throw new IllegalStateException("Model is not tracked by Architeezy"); //$NON-NLS-1$
+        }
+        var serverUrl = ConnectorProperties.extractServerUrl(modelUrl);
+        final var modelId = ConnectorProperties.extractModelId(modelUrl);
+        final var targetFile = model.getFile();
+
+        // Resolve token
+        var profile = AuthService.INSTANCE.findProfileForServer(serverUrl);
+        String token = null;
+        if (profile != null && profile.getStatus() == ProfileStatus.CONNECTED) {
+            token = AuthService.INSTANCE.getValidAccessToken(profile);
+        }
+
+        if (monitor != null) {
+            monitor.subTask("Fetching metadata"); //$NON-NLS-1$
+        }
+        var remote = client.getModel(serverUrl, token, modelId);
+
+        if (monitor != null) {
+            monitor.subTask("Downloading " + remote.name()); //$NON-NLS-1$
+        }
+        final var content = client.getModelContent(token, remote.contentUrl());
+
+        // Close existing model on the UI thread (without saving)
+        var closeError = new IOException[1];
+        Display.getDefault().syncExec(() -> {
+            try {
+                IEditorModelManager.INSTANCE.closeModel(model, false);
+            } catch (IOException e) {
+                closeError[0] = e;
+            }
+        });
+        if (closeError[0] != null) {
+            throw closeError[0];
+        }
+
+        // Deserialize new content to the same file
+        var newModel = ModelSerializer.INSTANCE.deserialize(content, targetFile);
+
+        // Open and configure the new model on the UI thread
+        var uiError = new Exception[1];
+        Display.getDefault().syncExec(() -> {
+            try {
+                IEditorModelManager.INSTANCE.openModel(newModel);
+                ConnectorProperties.setProperty(newModel, ConnectorProperties.KEY_URL, remote.selfUrl());
+                ConnectorProperties.setProperty(newModel, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
+                        remote.lastModified());
+                IEditorModelManager.INSTANCE.saveModel(newModel);
+            } catch (Exception e) {
+                uiError[0] = e;
+            }
+        });
+        if (uiError[0] != null) {
+            throw uiError[0];
+        }
+
+        // Save snapshot
+        if (monitor != null) {
+            monitor.subTask("Saving snapshot"); //$NON-NLS-1$
+        }
+        try {
+            SnapshotStore.INSTANCE.saveSnapshot(modelId, content);
+        } catch (Exception e) {
+            ConnectorPlugin.getInstance().getLog().warn("Failed to save snapshot after pull", e); //$NON-NLS-1$
+        }
+
+        // Clear the pending update marker
+        UpdateCheckService.INSTANCE.clearUpdate(newModel);
+
+        return newModel;
     }
 
     // -----------------------------------------------------------------------

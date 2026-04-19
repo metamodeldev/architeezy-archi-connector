@@ -13,6 +13,9 @@ import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
+import com.architeezy.archi.connector.navigator.ModelTreeDecorator;
+import com.architeezy.archi.connector.service.UpdateCheckService;
+
 /**
  * OSGi bundle activator for the Architeezy connector plugin.
  */
@@ -40,10 +43,13 @@ public class ConnectorPlugin extends AbstractUIPlugin {
     @Override
     public void start(BundleContext context) throws Exception {
         super.start(context);
+        UpdateCheckService.INSTANCE.start();
     }
 
     @Override
     public void stop(BundleContext context) throws Exception {
+        ModelTreeDecorator.INSTANCE.uninstall();
+        UpdateCheckService.INSTANCE.stop();
         super.stop(context);
     }
 
