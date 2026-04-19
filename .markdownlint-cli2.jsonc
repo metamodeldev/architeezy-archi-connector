@@ -1,0 +1,18 @@
+{
+  "config": {
+    "line-length": {
+      "code_block_line_length": 120,
+      "heading_line_length": 120,
+      "line_length": 100,
+      "tables": false,
+    },
+    "no-duplicate-heading": {
+      "siblings_only": true,
+    },
+    "no-inline-html": {
+      "allowed_elements": ["kbd"],
+    },
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules", ".claude", "test-results", "coverage", "monocart-report"],
+}

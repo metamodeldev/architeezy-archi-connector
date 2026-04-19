@@ -1,0 +1,11 @@
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.architeezy.archi</groupId>
+        <artifactId>com.architeezy.archi.connector.parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <artifactId>com.architeezy.archi.connector</artifactId>
+    <packaging>eclipse-plugin</packaging>
+</project>

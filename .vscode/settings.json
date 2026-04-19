@@ -1,0 +1,15 @@
+{
+  "[markdown]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file",
+  "editor.insertSpaces": true,
+  "editor.rulers": [120],
+  "editor.tabSize": 2,
+  "eslint.enable": false,
+  "markdown.validate.enabled": true,
+  "oxc.enable": true,
+  "prettier.enable": false
+}

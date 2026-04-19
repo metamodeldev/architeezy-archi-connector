@@ -1,0 +1,27 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Architeezy Connector
+Bundle-SymbolicName: com.architeezy.archi.connector;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-Vendor: Architeezy
+Bundle-Localization: plugin
+Bundle-Activator: com.architeezy.archi.connector.ConnectorPlugin
+Bundle-ActivationPolicy: lazy
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.ui,
+ org.eclipse.ui.browser,
+ org.eclipse.core.jobs,
+ org.eclipse.equinox.security,
+ org.eclipse.equinox.security.ui,
+ com.archimatetool.editor,
+ com.archimatetool.model
+Export-Package: com.architeezy.archi.connector,
+ com.architeezy.archi.connector.auth,
+ com.architeezy.archi.connector.api,
+ com.architeezy.archi.connector.model,
+ com.architeezy.archi.connector.io,
+ com.architeezy.archi.connector.service,
+ com.architeezy.archi.connector.handlers,
+ com.architeezy.archi.connector.wizard
+Automatic-Module-Name: com.architeezy.archi.connector
