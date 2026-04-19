@@ -9,7 +9,9 @@
  */
 package com.architeezy.archi.connector.api;
 
-/** Signals an HTTP or I/O error from the Architeezy REST API. */
+/**
+ * Signals an HTTP or I/O error from the Architeezy REST API.
+ */
 @SuppressWarnings("checkstyle:MagicNumber")
 public class ApiException extends Exception {
 

@@ -13,7 +13,9 @@ import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
-/** OSGi bundle activator for the Architeezy connector plugin. */
+/**
+ * OSGi bundle activator for the Architeezy connector plugin.
+ */
 public class ConnectorPlugin extends AbstractUIPlugin {
 
     /** Bundle symbolic name / plugin ID. */

@@ -19,7 +19,9 @@ import org.eclipse.equinox.security.storage.StorageException;
 
 import com.architeezy.archi.connector.ConnectorPlugin;
 
-/** Persists OAuth tokens in the Eclipse Equinox secure preferences store. */
+/**
+ * Persists OAuth tokens in the Eclipse Equinox secure preferences store.
+ */
 public final class TokenStore {
 
     /** The singleton instance. */

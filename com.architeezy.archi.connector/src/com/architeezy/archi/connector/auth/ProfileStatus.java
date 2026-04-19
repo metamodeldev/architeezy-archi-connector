@@ -9,7 +9,9 @@
  */
 package com.architeezy.archi.connector.auth;
 
-/** Connection state of a {@link ConnectionProfile}. */
+/**
+ * Connection state of a {@link ConnectionProfile}.
+ */
 public enum ProfileStatus {
 
     /** No active session; the user has not signed in. */

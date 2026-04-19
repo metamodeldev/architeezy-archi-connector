@@ -17,7 +17,9 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.architeezy.archi.connector.wizard.ImportFromArchiteezyWizard;
 
-/** Menu handler that opens the Import from Architeezy wizard. */
+/**
+ * Menu handler that opens the Import from Architeezy wizard.
+ */
 public class ImportFromArchiteezyMenuHandler extends AbstractHandler {
 
     @Override

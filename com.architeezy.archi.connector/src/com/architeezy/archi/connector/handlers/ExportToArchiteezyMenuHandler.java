@@ -21,7 +21,9 @@ import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.wizard.ExportToArchiteezyWizard;
 
-/** Menu handler that opens the Export to Architeezy wizard. */
+/**
+ * Menu handler that opens the Export to Architeezy wizard.
+ */
 public class ExportToArchiteezyMenuHandler extends AbstractHandler {
 
     @Override

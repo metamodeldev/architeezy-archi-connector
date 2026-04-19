@@ -39,7 +39,9 @@ import com.architeezy.archi.connector.auth.OAuthException;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.service.AuthService;
 
-/** Wizard page for selecting or creating an Architeezy connection profile. */
+/**
+ * Wizard page for selecting or creating an Architeezy connection profile.
+ */
 @SuppressWarnings("checkstyle:MagicNumber")
 public class ProfileSelectionPage extends WizardPage {
 
