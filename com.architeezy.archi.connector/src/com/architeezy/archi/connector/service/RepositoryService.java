@@ -13,14 +13,18 @@ import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Display;
 
 import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.model.IArchimateModel;
+import com.archimatetool.modelimporter.ModelImporter;
 import com.architeezy.archi.connector.ConnectorPlugin;
+import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
 import com.architeezy.archi.connector.api.PagedResult;
 import com.architeezy.archi.connector.api.RemoteModel;
@@ -108,7 +112,7 @@ public final class RepositoryService {
         }
 
         if (authenticated) {
-            saveInitialSnapshot(remote, content, monitor);
+            saveSnapshotAfterConfigure(model, ConnectorProperties.extractModelId(remote.selfUrl()), monitor);
         }
 
         return model;
@@ -138,13 +142,24 @@ public final class RepositoryService {
         }
     }
 
-    private void saveInitialSnapshot(RemoteModel remote, byte[] content, IProgressMonitor monitor) {
+    /**
+     * Serializes the model WITH connector properties already set and saves the
+     * result as the base snapshot. Storing the post-configure bytes ensures that
+     * the next comparison (local vs. base) produces equal results when no edits
+     * have been made since the last import/pull/publish.
+     *
+     * @param model the configured model
+     * @param modelId the repository model identifier
+     * @param monitor progress monitor
+     */
+    private void saveSnapshotAfterConfigure(IArchimateModel model, String modelId,
+            IProgressMonitor monitor) {
         if (monitor != null) {
             monitor.subTask("Saving snapshot"); //$NON-NLS-1$
         }
         try {
-            var modelId = ConnectorProperties.extractModelId(remote.selfUrl());
-            SnapshotStore.INSTANCE.saveSnapshot(modelId, content);
+            var bytes = ModelSerializer.INSTANCE.serialize(model);
+            SnapshotStore.INSTANCE.saveSnapshot(modelId, bytes);
         } catch (Exception e) {
             ConnectorPlugin.getInstance().getLog().error("Failed to save initial snapshot", e); //$NON-NLS-1$
         }
@@ -177,8 +192,8 @@ public final class RepositoryService {
         if (monitor != null) {
             monitor.subTask("Uploading model content"); //$NON-NLS-1$
         }
-        var content = ModelSerializer.INSTANCE.serialize(model);
-        client.updateModelContent(token, remote.selfUrl(), content);
+        var uploadContent = ModelSerializer.INSTANCE.serialize(model);
+        client.updateModelContent(token, remote.selfUrl(), uploadContent);
 
         ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, remote.selfUrl());
         ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
@@ -186,7 +201,8 @@ public final class RepositoryService {
         IEditorModelManager.INSTANCE.saveModel(model);
 
         var modelId = ConnectorProperties.extractModelId(remote.selfUrl());
-        SnapshotStore.INSTANCE.saveSnapshot(modelId, content);
+        // Serialize AFTER connector properties are set so the snapshot matches future local comparisons.
+        SnapshotStore.INSTANCE.saveSnapshot(modelId, ModelSerializer.INSTANCE.serialize(model));
 
         return remote;
     }
@@ -240,27 +256,29 @@ public final class RepositoryService {
     }
 
     // -----------------------------------------------------------------------
-    // Pull (download + overwrite existing open model)
+    // Pull (smart non-destructive update)
 
     /**
      * Downloads the latest model content from the Architeezy server and
-     * overwrites the local file, replacing the model that is currently open in
-     * the Archi editor. The local model is closed without saving before the new
-     * content is written.
+     * applies it to the locally open model without closing or reopening it.
      *
      * <p>
-     * Steps:
-     * <ol>
-     * <li>Fetch metadata and download content.</li>
-     * <li>Close the existing model (no save).</li>
-     * <li>Deserialize the new content to the same file.</li>
-     * <li>Open the new model, set connector properties, and save.</li>
-     * <li>Save a new base snapshot and clear the update indicator.</li>
-     * </ol>
+     * The operation first classifies the relationship between the local model,
+     * the remote model, and the stored base snapshot into one of four scenarios:
+     * <ul>
+     * <li><b>UP_TO_DATE</b> — nothing to do.</li>
+     * <li><b>SIMPLE_PULL</b> — remote changed, local did not; remote changes are
+     *     applied via {@link ModelImporter} so open diagrams and the Undo stack
+     *     are preserved.</li>
+     * <li><b>SIMPLE_PUSH</b> — local changed, remote did not; the user is reminded
+     *     to push their changes.</li>
+     * <li><b>DIVERGED</b> — both sides changed; the user is asked whether to
+     *     overwrite local changes with the remote version.</li>
+     * </ul>
      *
-     * @param model the locally open model to replace
+     * @param model the locally open model to update
      * @param monitor progress monitor
-     * @return the newly opened {@link IArchimateModel}
+     * @return the same {@link IArchimateModel} instance (never replaced)
      * @throws IllegalStateException if the model is not tracked
      * @throws Exception if the pull fails
      */
@@ -271,9 +289,7 @@ public final class RepositoryService {
         }
         var serverUrl = ConnectorProperties.extractServerUrl(modelUrl);
         final var modelId = ConnectorProperties.extractModelId(modelUrl);
-        final var targetFile = model.getFile();
 
-        // Resolve token
         var profile = AuthService.INSTANCE.findProfileForServer(serverUrl);
         String token = null;
         if (profile != null && profile.getStatus() == ProfileStatus.CONNECTED) {
@@ -288,33 +304,115 @@ public final class RepositoryService {
         if (monitor != null) {
             monitor.subTask("Downloading " + remote.name()); //$NON-NLS-1$
         }
-        final var content = client.getModelContent(token, remote.contentUrl());
+        final var remoteContent = client.getModelContent(token, remote.contentUrl());
 
-        // Close existing model on the UI thread (without saving)
-        var closeError = new IOException[1];
-        Display.getDefault().syncExec(() -> {
-            try {
-                IEditorModelManager.INSTANCE.closeModel(model, false);
-            } catch (IOException e) {
-                closeError[0] = e;
-            }
-        });
-        if (closeError[0] != null) {
-            throw closeError[0];
+        if (monitor != null) {
+            monitor.subTask("Analyzing changes"); //$NON-NLS-1$
         }
+        var scenario = detectSyncScenario(model, modelId, remoteContent);
 
-        // Deserialize new content to the same file
-        var newModel = ModelSerializer.INSTANCE.deserialize(content, targetFile);
+        switch (scenario) {
+        case UP_TO_DATE:
+            UpdateCheckService.INSTANCE.clearUpdate(model);
+            return model;
+        case SIMPLE_PULL:
+            if (monitor != null) {
+                monitor.subTask("Applying remote changes"); //$NON-NLS-1$
+            }
+            applyNonDestructivePull(model, remoteContent, remote, modelId);
+            return model;
+        case SIMPLE_PUSH:
+            Display.getDefault().syncExec(() -> MessageDialog.openInformation(
+                    Display.getDefault().getActiveShell(),
+                    Messages.PullHandler_title,
+                    Messages.PullHandler_remoteUnchanged));
+            UpdateCheckService.INSTANCE.clearUpdate(model);
+            return model;
+        case DIVERGED:
+            if (MergeService.INSTANCE.askUserToApplyRemote(model)) {
+                if (monitor != null) {
+                    monitor.subTask("Applying remote changes"); //$NON-NLS-1$
+                }
+                applyNonDestructivePull(model, remoteContent, remote, modelId);
+            }
+            return model;
+        default:
+            return model;
+        }
+    }
 
-        // Open and configure the new model on the UI thread
+    /**
+     * Classifies the pull scenario by comparing Local, Base, and Remote content.
+     *
+     * <p>
+     * When no base snapshot exists the method conservatively returns
+     * {@link SyncScenario#SIMPLE_PULL} so the remote is applied without conflict.
+     *
+     * @param model the locally open model
+     * @param modelId the repository model identifier
+     * @param remoteContent raw XMI bytes from the server
+     * @return the applicable {@link SyncScenario}
+     * @throws IOException if the local model cannot be serialized
+     */
+    SyncScenario detectSyncScenario(IArchimateModel model, String modelId,
+            byte[] remoteContent) throws IOException {
+        if (!SnapshotStore.INSTANCE.hasSnapshot(modelId)) {
+            return SyncScenario.SIMPLE_PULL;
+        }
+        var base = SnapshotStore.INSTANCE.loadSnapshot(modelId);
+        var local = ModelSerializer.INSTANCE.serialize(model);
+        return computeSyncScenario(Arrays.equals(local, base), Arrays.equals(remoteContent, base));
+    }
+
+    /**
+     * Pure mapping from comparison flags to scenario, extracted for unit testing.
+     *
+     * @param localEqualsBase whether the serialized local model equals the base snapshot
+     * @param remoteEqualsBase whether the remote content equals the base snapshot
+     * @return the applicable {@link SyncScenario}
+     */
+    static SyncScenario computeSyncScenario(boolean localEqualsBase, boolean remoteEqualsBase) {
+        if (localEqualsBase && remoteEqualsBase) {
+            return SyncScenario.UP_TO_DATE;
+        }
+        if (localEqualsBase) {
+            return SyncScenario.SIMPLE_PULL;
+        }
+        if (remoteEqualsBase) {
+            return SyncScenario.SIMPLE_PUSH;
+        }
+        return SyncScenario.DIVERGED;
+    }
+
+    /**
+     * Applies remote model content to the open target model non-destructively
+     * using {@link ModelImporter}. Open diagrams remain open and the Undo stack
+     * is preserved.
+     *
+     * <p>
+     * After import, connector metadata is updated and a new base snapshot is saved.
+     *
+     * @param target the model currently open in Archi
+     * @param remoteContent raw XMI bytes from the server
+     * @param remote server-side metadata of the model
+     * @param modelId the repository model identifier
+     * @throws Exception if import or snapshot saving fails
+     */
+    private void applyNonDestructivePull(IArchimateModel target, byte[] remoteContent,
+            RemoteModel remote, String modelId) throws Exception {
+        var incoming = ModelSerializer.INSTANCE.deserializeInMemory(remoteContent);
+
         var uiError = new Exception[1];
         Display.getDefault().syncExec(() -> {
             try {
-                IEditorModelManager.INSTANCE.openModel(newModel);
-                ConnectorProperties.setProperty(newModel, ConnectorProperties.KEY_URL, remote.selfUrl());
-                ConnectorProperties.setProperty(newModel, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
-                        remote.lastModified());
-                IEditorModelManager.INSTANCE.saveModel(newModel);
+                var importer = new ModelImporter();
+                importer.setUpdateAll(true);
+                importer.setUpdateFolderStructure(true);
+                importer.doImport(incoming, target);
+                ConnectorProperties.setProperty(target, ConnectorProperties.KEY_URL, remote.selfUrl());
+                ConnectorProperties.setProperty(target,
+                        ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME, remote.lastModified());
+                IEditorModelManager.INSTANCE.saveModel(target);
             } catch (Exception e) {
                 uiError[0] = e;
             }
@@ -323,20 +421,14 @@ public final class RepositoryService {
             throw uiError[0];
         }
 
-        // Save snapshot
-        if (monitor != null) {
-            monitor.subTask("Saving snapshot"); //$NON-NLS-1$
-        }
         try {
-            SnapshotStore.INSTANCE.saveSnapshot(modelId, content);
+            // Serialize AFTER connector properties are set so the snapshot matches future local comparisons.
+            SnapshotStore.INSTANCE.saveSnapshot(modelId, ModelSerializer.INSTANCE.serialize(target));
         } catch (Exception e) {
             ConnectorPlugin.getInstance().getLog().warn("Failed to save snapshot after pull", e); //$NON-NLS-1$
         }
 
-        // Clear the pending update marker
-        UpdateCheckService.INSTANCE.clearUpdate(newModel);
-
-        return newModel;
+        UpdateCheckService.INSTANCE.clearUpdate(target);
     }
 
     // -----------------------------------------------------------------------

@@ -153,6 +153,13 @@ public final class Messages extends NLS {
 
     public static String PullHandler_failed;
 
+    public static String PullHandler_remoteUnchanged;
+
+    // MergeService
+    public static String MergeService_conflictTitle;
+
+    public static String MergeService_conflictMessage;
+
     private static final String BUNDLE_NAME = "com.architeezy.archi.connector.messages"; //$NON-NLS-1$
 
     static {

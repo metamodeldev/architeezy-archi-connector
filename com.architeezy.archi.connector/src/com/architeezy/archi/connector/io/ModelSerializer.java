@@ -55,6 +55,22 @@ public final class ModelSerializer {
     }
 
     /**
+     * Deserializes XMI bytes into a transient IArchimateModel without persisting
+     * to any user-visible file. The model is backed by a temporary file that is
+     * scheduled for deletion on JVM exit. Use this when you need the object graph
+     * for comparison or import operations, not for user-facing model management.
+     *
+     * @param data the XMI data to deserialize
+     * @return the deserialized IArchimateModel
+     * @throws IOException if the data is invalid or an I/O error occurs
+     */
+    public IArchimateModel deserializeInMemory(byte[] data) throws IOException {
+        var tmp = File.createTempFile("archi-connector-tmp-", ".archimate"); //$NON-NLS-1$ //$NON-NLS-2$
+        tmp.deleteOnExit();
+        return deserialize(data, tmp);
+    }
+
+    /**
      * Deserializes XMI bytes into an IArchimateModel loaded at {@code targetFile}.
      * The returned model is attached to a Resource backed by {@code targetFile},
      * ready to be opened by IEditorModelManager.
