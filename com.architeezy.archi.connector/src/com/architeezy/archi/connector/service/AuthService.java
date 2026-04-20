@@ -81,7 +81,7 @@ public final class AuthService {
     /**
      * Returns an unmodifiable list of all connection profiles.
      *
-     * @return The list of profiles.
+     * @return the list of profiles
      */
     public synchronized List<ConnectionProfile> getProfiles() {
         return Collections.unmodifiableList(profiles);
@@ -90,7 +90,7 @@ public final class AuthService {
     /**
      * Returns the currently active connection profile.
      *
-     * @return The active profile, or null if none is set.
+     * @return the active profile, or null if none is set
      */
     public synchronized ConnectionProfile getActiveProfile() {
         return activeProfile;
@@ -99,7 +99,7 @@ public final class AuthService {
     /**
      * Sets the active connection profile by name.
      *
-     * @param profileName The name of the profile to make active.
+     * @param profileName the name of the profile to make active
      */
     public synchronized void setActiveProfile(String profileName) {
         profiles.stream()
@@ -114,9 +114,9 @@ public final class AuthService {
     /**
      * Adds a new connection profile and saves its properties.
      *
-     * @param profile The profile to add.
-     * @param authEndpoint The authorization endpoint.
-     * @param tokenEndpoint The token endpoint.
+     * @param profile the profile to add
+     * @param authEndpoint the authorization endpoint
+     * @param tokenEndpoint the token endpoint
      */
     public synchronized void addProfile(ConnectionProfile profile, String authEndpoint, String tokenEndpoint) {
         profiles.add(profile);
@@ -131,10 +131,10 @@ public final class AuthService {
     /**
      * Updates an existing connection profile.
      *
-     * @param oldName The name of the profile to replace.
-     * @param newProfile The updated profile.
-     * @param authEndpoint The new authorization endpoint.
-     * @param tokenEndpoint The new token endpoint.
+     * @param oldName the name of the profile to replace
+     * @param newProfile the updated profile
+     * @param authEndpoint the new authorization endpoint
+     * @param tokenEndpoint the new token endpoint
      */
     public synchronized void updateProfile(String oldName, ConnectionProfile newProfile, String authEndpoint,
             String tokenEndpoint) {
@@ -162,7 +162,7 @@ public final class AuthService {
     /**
      * Removes a connection profile by name.
      *
-     * @param profileName The name of the profile to remove.
+     * @param profileName the name of the profile to remove
      */
     public synchronized void removeProfile(String profileName) {
         profiles.removeIf(p -> {
@@ -182,8 +182,8 @@ public final class AuthService {
      * Returns the first profile whose server URL matches the given URL, or
      * {@code null} if none is found. Prefers a connected profile over others.
      *
-     * @param serverUrl The server URL to match.
-     * @return A matching profile, or null.
+     * @param serverUrl the server URL to match
+     * @return a matching profile, or null
      */
     public synchronized ConnectionProfile findProfileForServer(String serverUrl) {
         if (serverUrl == null) {
@@ -206,8 +206,8 @@ public final class AuthService {
     /**
      * Returns the authorization endpoint for the given profile.
      *
-     * @param profileName The name of the profile.
-     * @return The authorization endpoint URL.
+     * @param profileName the name of the profile
+     * @return the authorization endpoint URL
      */
     public synchronized String getAuthEndpoint(String profileName) {
         return preferenceStore().getString(String.format(PREF_AUTH_ENDPOINT, profileName));
@@ -216,8 +216,8 @@ public final class AuthService {
     /**
      * Returns the token endpoint for the given profile.
      *
-     * @param profileName The name of the profile.
-     * @return The token endpoint URL.
+     * @param profileName the name of the profile
+     * @return the token endpoint URL
      */
     public synchronized String getTokenEndpoint(String profileName) {
         return preferenceStore().getString(String.format(PREF_TOKEN_ENDPOINT, profileName));
@@ -229,8 +229,8 @@ public final class AuthService {
     /**
      * Starts the OAuth login flow for the given profile.
      *
-     * @param profile The profile to authenticate.
-     * @throws OAuthException if authentication fails.
+     * @param profile the profile to authenticate
+     * @throws OAuthException if authentication fails
      */
     public void login(ConnectionProfile profile) throws OAuthException {
         profile.setStatus(ProfileStatus.CONNECTING);
@@ -260,7 +260,7 @@ public final class AuthService {
     /**
      * Logs out the given profile by clearing its tokens.
      *
-     * @param profile The profile to log out.
+     * @param profile the profile to log out
      */
     public void logout(ConnectionProfile profile) {
         TokenStore.INSTANCE.clearTokens(profile.getServerUrl());
@@ -270,7 +270,7 @@ public final class AuthService {
     /**
      * Cancels the ongoing login flow for the given profile.
      *
-     * @param profile The profile whose login should be cancelled.
+     * @param profile the profile whose login should be cancelled
      */
     public void cancelLogin(ConnectionProfile profile) {
         oauth.cancelLogin();
@@ -281,9 +281,9 @@ public final class AuthService {
      * Returns a valid access token, performing a proactive refresh if the token
      * is near expiry. Multiple concurrent callers share a single refresh request.
      *
-     * @param profile The connection profile to use.
-     * @return A valid access token.
-     * @throws OAuthException if the token cannot be retrieved or refreshed.
+     * @param profile the connection profile to use
+     * @return a valid access token
+     * @throws OAuthException if the token cannot be retrieved or refreshed
      */
     public String getValidAccessToken(ConnectionProfile profile) throws OAuthException {
         var serverUrl = profile.getServerUrl();

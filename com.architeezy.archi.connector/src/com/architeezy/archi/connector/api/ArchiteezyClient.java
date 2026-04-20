@@ -51,12 +51,12 @@ public class ArchiteezyClient {
     /**
      * Lists models in the remote repository.
      *
-     * @param serverUrl base URL of the Architeezy server.
-     * @param accessToken OAuth2 bearer token.
-     * @param page zero-based page index.
-     * @param size page size.
-     * @return paged list of models.
-     * @throws ApiException on HTTP or I/O error.
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param page zero-based page index
+     * @param size page size
+     * @return paged list of models
+     * @throws ApiException on HTTP or I/O error
      */
     public PagedResult<RemoteModel> listModels(String serverUrl, String accessToken, int page, int size)
             throws ApiException {
@@ -68,11 +68,11 @@ public class ArchiteezyClient {
     /**
      * Fetches metadata for a single model.
      *
-     * @param serverUrl base URL of the Architeezy server.
-     * @param accessToken OAuth2 bearer token.
-     * @param modelId model identifier.
-     * @return model metadata.
-     * @throws ApiException on HTTP or I/O error.
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param modelId model identifier
+     * @return model metadata
+     * @throws ApiException on HTTP or I/O error
      */
     public RemoteModel getModel(String serverUrl, String accessToken, String modelId) throws ApiException {
         var url = serverUrl + "/api/models/" + modelId; //$NON-NLS-1$
@@ -85,9 +85,9 @@ public class ArchiteezyClient {
      *
      * @param accessToken OAuth2 bearer token (may be {@code null} for public
      *        content).
-     * @param contentUrl direct URL to the model content.
-     * @return raw content bytes.
-     * @throws ApiException on HTTP or I/O error.
+     * @param contentUrl direct URL to the model content
+     * @return raw content bytes
+     * @throws ApiException on HTTP or I/O error
      */
     public byte[] getModelContent(String accessToken, String contentUrl) throws ApiException {
         try {
@@ -114,10 +114,10 @@ public class ArchiteezyClient {
     /**
      * Lists all projects accessible to the authenticated user.
      *
-     * @param serverUrl base URL of the Architeezy server.
-     * @param accessToken OAuth2 bearer token.
-     * @return list of all accessible projects.
-     * @throws ApiException on HTTP or I/O error.
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @return list of all accessible projects
+     * @throws ApiException on HTTP or I/O error
      */
     public List<RemoteProject> listProjects(String serverUrl, String accessToken) throws ApiException {
         var url = serverUrl + "/api/projects?size=100"; //$NON-NLS-1$
@@ -131,12 +131,12 @@ public class ArchiteezyClient {
     /**
      * Uploads a model file to the server as a multipart POST.
      *
-     * @param serverUrl base URL of the Architeezy server.
-     * @param accessToken OAuth2 bearer token.
-     * @param projectId target project identifier.
-     * @param fileName file name for the uploaded model.
-     * @param content raw ArchiMate file bytes.
-     * @throws ApiException on HTTP or I/O error.
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param projectId target project identifier
+     * @param fileName file name for the uploaded model
+     * @param content raw ArchiMate file bytes
+     * @throws ApiException on HTTP or I/O error
      */
     public void exportModel(String serverUrl, String accessToken, String projectId, String fileName, byte[] content)
             throws ApiException {
@@ -196,12 +196,12 @@ public class ArchiteezyClient {
     /**
      * Creates a new model record on the server.
      *
-     * @param serverUrl base URL of the Architeezy server.
-     * @param accessToken OAuth2 bearer token.
-     * @param name model name.
-     * @param description model description.
-     * @return the newly created model metadata.
-     * @throws ApiException on HTTP or I/O error.
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param name model name
+     * @param description model description
+     * @return the newly created model metadata
+     * @throws ApiException on HTTP or I/O error
      */
     public RemoteModel createModel(String serverUrl, String accessToken, String name, String description)
             throws ApiException {
@@ -229,10 +229,10 @@ public class ArchiteezyClient {
     /**
      * Replaces the content of an existing model.
      *
-     * @param accessToken OAuth2 bearer token.
-     * @param modelUrl HAL self link URL of the model to update.
-     * @param content new raw ArchiMate file bytes.
-     * @throws ApiException on HTTP or I/O error.
+     * @param accessToken OAuth2 bearer token
+     * @param modelUrl HAL self link URL of the model to update
+     * @param content new raw ArchiMate file bytes
+     * @throws ApiException on HTTP or I/O error
      */
     public void updateModelContent(String accessToken, String modelUrl, byte[] content) throws ApiException {
         try {
@@ -254,9 +254,9 @@ public class ArchiteezyClient {
     /**
      * Deletes a model from the server.
      *
-     * @param accessToken OAuth2 bearer token.
-     * @param modelUrl HAL self link URL of the model to delete.
-     * @throws ApiException on HTTP or I/O error.
+     * @param accessToken OAuth2 bearer token
+     * @param modelUrl HAL self link URL of the model to delete
+     * @throws ApiException on HTTP or I/O error
      */
     public void deleteModel(String accessToken, String modelUrl) throws ApiException {
         try {
@@ -469,11 +469,11 @@ public class ArchiteezyClient {
     /**
      * Finds the closing bracket matching the opening bracket at {@code start}.
      *
-     * @param s the string to search.
-     * @param start index of the opening bracket.
-     * @param open the opening bracket character.
-     * @param close the closing bracket character.
-     * @return index of the matching closing bracket, or {@code -1} if not found.
+     * @param s the string to search
+     * @param start index of the opening bracket
+     * @param open the opening bracket character
+     * @param close the closing bracket character
+     * @return index of the matching closing bracket, or {@code -1} if not found
      */
     private static int findMatchingBracket(String s, int start, char open, char close) {
         var depth = 0;

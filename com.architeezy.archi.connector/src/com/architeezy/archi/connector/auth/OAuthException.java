@@ -19,7 +19,7 @@ public class OAuthException extends Exception {
     /**
      * Creates an exception with the given message.
      *
-     * @param message error description.
+     * @param message error description
      */
     public OAuthException(String message) {
         super(message);
@@ -28,8 +28,8 @@ public class OAuthException extends Exception {
     /**
      * Creates an exception with the given message and cause.
      *
-     * @param message error description.
-     * @param cause the underlying exception.
+     * @param message error description
+     * @param cause the underlying exception
      */
     public OAuthException(String message, Throwable cause) {
         super(message, cause);

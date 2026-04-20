@@ -37,7 +37,7 @@ public class ExportToArchiteezyWizard extends Wizard implements IExportWizard {
     /**
      * Creates the wizard for exporting {@code model}.
      *
-     * @param model The model to export.
+     * @param model the model to export
      */
     public ExportToArchiteezyWizard(IArchimateModel model) {
         this.model = model;

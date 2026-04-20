@@ -166,7 +166,7 @@ public class ProjectSelectionPage extends WizardPage {
     /**
      * Returns the currently selected project, or {@code null} if none.
      *
-     * @return the selected project, or {@code null}.
+     * @return the selected project, or {@code null}
      */
     public RemoteProject getSelectedProject() {
         var sel = (IStructuredSelection) listViewer.getSelection();

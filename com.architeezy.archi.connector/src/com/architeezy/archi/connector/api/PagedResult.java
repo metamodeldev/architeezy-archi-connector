@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * A single page of results from a paginated API response.
  *
- * @param <T> the type of each item.
+ * @param <T> the type of each item
  * @param items the items
  * @param totalElements the total elements
  * @param totalPages the total pages
@@ -25,7 +25,7 @@ public record PagedResult<T>(List<T> items, long totalElements, int totalPages, 
     /**
      * Returns {@code true} if there is at least one more page after this one.
      *
-     * @return {@code true} if more pages exist.
+     * @return {@code true} if more pages exist
      */
     public boolean hasMore() {
         return page < totalPages - 1;

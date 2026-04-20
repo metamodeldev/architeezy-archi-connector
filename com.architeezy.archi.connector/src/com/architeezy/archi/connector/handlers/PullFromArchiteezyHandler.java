@@ -118,7 +118,7 @@ public class PullFromArchiteezyHandler extends AbstractHandler {
      * Returns the tracked model from the active editor, or if no editor is
      * active, from the first selected element in any workbench view.
      *
-     * @return The tracked model.
+     * @return the tracked model
      */
     private IArchimateModel getActiveTrackedModel() {
         var w = getWindow();

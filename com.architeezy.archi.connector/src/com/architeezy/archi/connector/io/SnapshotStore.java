@@ -34,9 +34,9 @@ public final class SnapshotStore {
     /**
      * Saves a snapshot of the model content.
      *
-     * @param modelId The ID of the model.
-     * @param content The content to save.
-     * @throws IOException If an I/O error occurs.
+     * @param modelId the model identifier
+     * @param content the content to save
+     * @throws IOException if an I/O error occurs
      */
     public void saveSnapshot(String modelId, byte[] content) throws IOException {
         File file = snapshotFile(modelId);
@@ -54,11 +54,11 @@ public final class SnapshotStore {
     }
 
     /**
-     * Loads the snapshot for the given model ID.
+     * Loads the snapshot for the given model identifier.
      *
-     * @param modelId The ID of the model.
-     * @return The snapshot content.
-     * @throws IOException If the snapshot is not found or an I/O error occurs.
+     * @param modelId the model identifier
+     * @return the snapshot content
+     * @throws IOException if the snapshot is not found or an I/O error occurs
      */
     public byte[] loadSnapshot(String modelId) throws IOException {
         File file = snapshotFile(modelId);
@@ -69,29 +69,29 @@ public final class SnapshotStore {
     }
 
     /**
-     * Checks if a snapshot exists for the given model ID.
+     * Checks if a snapshot exists for the given model identifier.
      *
-     * @param modelId The ID of the model.
-     * @return true if a snapshot exists, false otherwise.
+     * @param modelId the model identifier
+     * @return true if a snapshot exists, false otherwise
      */
     public boolean hasSnapshot(String modelId) {
         return snapshotFile(modelId).exists();
     }
 
     /**
-     * Deletes the snapshot for the given model ID.
+     * Deletes the snapshot for the given model identifier.
      *
-     * @param modelId The ID of the model.
+     * @param modelId the model identifier
      */
     public void deleteSnapshot(String modelId) {
         snapshotFile(modelId).delete();
     }
 
     /**
-     * Resolves the snapshot file for the given model ID.
+     * Resolves the snapshot file for the given model identifier.
      *
-     * @param modelId The ID of the model.
-     * @return The file object pointing to the snapshot.
+     * @param modelId the model identifier
+     * @return the file object pointing to the snapshot
      */
     private File snapshotFile(String modelId) {
         File stateLocation = Platform.getStateLocation(
@@ -102,8 +102,8 @@ public final class SnapshotStore {
     /**
      * Strips characters that are illegal in file names.
      *
-     * @param modelId The model ID to sanitize.
-     * @return The sanitized model ID.
+     * @param modelId the model identifier to sanitize
+     * @return the sanitized model identifier
      */
     private static String sanitize(String modelId) {
         return modelId.replaceAll("[^a-zA-Z0-9_\\-]", "_"); //$NON-NLS-1$ //$NON-NLS-2$

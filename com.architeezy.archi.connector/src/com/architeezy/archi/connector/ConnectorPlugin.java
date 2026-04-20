@@ -21,7 +21,7 @@ import com.architeezy.archi.connector.service.UpdateCheckService;
  */
 public class ConnectorPlugin extends AbstractUIPlugin {
 
-    /** Bundle symbolic name / plugin ID. */
+    /** Bundle symbolic name / plugin identifier. */
     public static final String PLUGIN_ID = "com.architeezy.archi.connector"; //$NON-NLS-1$
 
     private static ConnectorPlugin instance;
@@ -34,7 +34,7 @@ public class ConnectorPlugin extends AbstractUIPlugin {
     /**
      * Returns the shared plugin instance.
      *
-     * @return the shared plugin instance.
+     * @return the shared plugin instance
      */
     public static ConnectorPlugin getInstance() {
         return instance;
@@ -56,8 +56,8 @@ public class ConnectorPlugin extends AbstractUIPlugin {
     /**
      * Returns an image descriptor for the image at the given plugin-relative path.
      *
-     * @param path plugin-relative path to the image.
-     * @return image descriptor for the given path.
+     * @param path plugin-relative path to the image
+     * @return image descriptor for the given path
      */
     public static ImageDescriptor getImageDescriptor(String path) {
         return imageDescriptorFromPlugin(PLUGIN_ID, path);

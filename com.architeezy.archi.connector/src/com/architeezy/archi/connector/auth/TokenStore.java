@@ -41,8 +41,8 @@ public final class TokenStore {
     /**
      * Returns the stored access token for the given server URL, or {@code null}.
      *
-     * @param serverUrl the server URL used as the storage key.
-     * @return the access token, or {@code null} if absent.
+     * @param serverUrl the server URL used as the storage key
+     * @return the access token, or {@code null} if absent
      */
     public String getAccessToken(String serverUrl) {
         try {
@@ -56,8 +56,8 @@ public final class TokenStore {
     /**
      * Returns the stored refresh token for the given server URL, or {@code null}.
      *
-     * @param serverUrl the server URL used as the storage key.
-     * @return the refresh token, or {@code null} if absent.
+     * @param serverUrl the server URL used as the storage key
+     * @return the refresh token, or {@code null} if absent
      */
     public String getRefreshToken(String serverUrl) {
         try {
@@ -72,8 +72,8 @@ public final class TokenStore {
      * Returns the token expiry time (epoch millis) for the given server URL, or
      * {@code 0}.
      *
-     * @param serverUrl the server URL used as the storage key.
-     * @return epoch millis at which the token expires, or {@code 0} if unknown.
+     * @param serverUrl the server URL used as the storage key
+     * @return epoch millis at which the token expires, or {@code 0} if unknown
      */
     public long getExpiresAt(String serverUrl) {
         try {
@@ -87,10 +87,10 @@ public final class TokenStore {
     /**
      * Persists the access token, refresh token, and expiry for the given server.
      *
-     * @param serverUrl the server URL used as the storage key.
-     * @param accessToken the access token to store.
-     * @param refreshToken the refresh token to store.
-     * @param expiresAt epoch millis at which the access token expires.
+     * @param serverUrl the server URL used as the storage key
+     * @param accessToken the access token to store
+     * @param refreshToken the refresh token to store
+     * @param expiresAt epoch millis at which the access token expires
      */
     public void saveTokens(String serverUrl, String accessToken, String refreshToken, long expiresAt) {
         try {
@@ -107,7 +107,7 @@ public final class TokenStore {
     /**
      * Removes all stored tokens for the given server URL.
      *
-     * @param serverUrl the server URL used as the storage key.
+     * @param serverUrl the server URL used as the storage key
      */
     public void clearTokens(String serverUrl) {
         try {

@@ -38,9 +38,9 @@ public final class ModelSerializer {
      * A deep copy is made so the original model is not attached to the temporary
      * Resource.
      *
-     * @param model The model to serialize.
-     * @return The serialized model content as bytes.
-     * @throws IOException If an I/O error occurs.
+     * @param model the model to serialize
+     * @return the serialized model content as bytes
+     * @throws IOException if an I/O error occurs
      */
     public byte[] serialize(IArchimateModel model) throws IOException {
         var tmp = File.createTempFile("archi-connector-", ".archimate"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -59,10 +59,10 @@ public final class ModelSerializer {
      * The returned model is attached to a Resource backed by {@code targetFile},
      * ready to be opened by IEditorModelManager.
      *
-     * @param data The XMI data to deserialize.
-     * @param targetFile The file where the model will be loaded.
-     * @return The deserialized IArchimateModel.
-     * @throws IOException If the data is invalid or an I/O error occurs.
+     * @param data the XMI data to deserialize
+     * @param targetFile the file where the model will be loaded
+     * @return the deserialized IArchimateModel
+     * @throws IOException if the data is invalid or an I/O error occurs
      */
     public IArchimateModel deserialize(byte[] data, File targetFile) throws IOException {
         Files.write(targetFile.toPath(), data);

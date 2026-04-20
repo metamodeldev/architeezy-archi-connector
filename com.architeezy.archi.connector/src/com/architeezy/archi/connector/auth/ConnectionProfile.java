@@ -26,9 +26,9 @@ public class ConnectionProfile {
     /**
      * Creates a profile with the given configuration.
      *
-     * @param name unique profile name.
-     * @param serverUrl base URL of the Architeezy server.
-     * @param clientId OAuth2 client identifier.
+     * @param name unique profile name
+     * @param serverUrl base URL of the Architeezy server
+     * @param clientId OAuth2 client identifier
      */
     public ConnectionProfile(String name, String serverUrl, String clientId) {
         this.name = name;
@@ -40,7 +40,7 @@ public class ConnectionProfile {
     /**
      * Returns the unique profile name.
      *
-     * @return the profile name.
+     * @return the profile name
      */
     public String getName() {
         return name;
@@ -49,7 +49,7 @@ public class ConnectionProfile {
     /**
      * Returns the base URL of the Architeezy server.
      *
-     * @return the server URL.
+     * @return the server URL
      */
     public String getServerUrl() {
         return serverUrl;
@@ -58,7 +58,7 @@ public class ConnectionProfile {
     /**
      * Returns the OAuth2 client identifier.
      *
-     * @return the client ID.
+     * @return the client identifier
      */
     public String getClientId() {
         return clientId;
@@ -67,7 +67,7 @@ public class ConnectionProfile {
     /**
      * Returns the current connection status.
      *
-     * @return the current status.
+     * @return the current status
      */
     public ProfileStatus getStatus() {
         return status;
@@ -76,7 +76,7 @@ public class ConnectionProfile {
     /**
      * Sets the current connection status.
      *
-     * @param status the new status.
+     * @param status the new status
      */
     public void setStatus(ProfileStatus status) {
         this.status = status;

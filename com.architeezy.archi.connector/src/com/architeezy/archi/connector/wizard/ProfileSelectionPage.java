@@ -84,7 +84,7 @@ public class ProfileSelectionPage extends WizardPage {
      * Creates the page, optionally requiring a successful sign-in.
      *
      * @param requireAuthentication {@code true} to block Next until the user is
-     *        signed in.
+     *        signed in
      */
     public ProfileSelectionPage(boolean requireAuthentication) {
         super("profileSelectionPage"); //$NON-NLS-1$
@@ -408,7 +408,7 @@ public class ProfileSelectionPage extends WizardPage {
     /**
      * Returns the profile currently selected in the combo, or the active profile.
      *
-     * @return the selected connection profile, or {@code null} if none exists.
+     * @return the selected connection profile, or {@code null} if none exists
      */
     public ConnectionProfile getSelectedProfile() {
         var idx = profileCombo == null ? -1 : profileCombo.getSelectionIndex();

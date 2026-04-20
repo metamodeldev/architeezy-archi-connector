@@ -22,8 +22,8 @@ public class ApiException extends Exception {
     /**
      * Creates an exception with an HTTP status code and message.
      *
-     * @param statusCode HTTP status code.
-     * @param message error message.
+     * @param statusCode HTTP status code
+     * @param message error message
      */
     public ApiException(int statusCode, String message) {
         super(message);
@@ -33,8 +33,8 @@ public class ApiException extends Exception {
     /**
      * Creates an exception wrapping a lower-level I/O error (status -1).
      *
-     * @param message error message.
-     * @param cause the underlying exception.
+     * @param message error message
+     * @param cause the underlying exception
      */
     public ApiException(String message, Throwable cause) {
         super(message, cause);
@@ -44,7 +44,7 @@ public class ApiException extends Exception {
     /**
      * Returns the HTTP status code, or {@code -1} for I/O errors.
      *
-     * @return the HTTP status code.
+     * @return the HTTP status code
      */
     public int getStatusCode() {
         return statusCode;
@@ -53,7 +53,7 @@ public class ApiException extends Exception {
     /**
      * Returns {@code true} if the server returned 401 Unauthorized.
      *
-     * @return {@code true} for HTTP 401.
+     * @return {@code true} for HTTP 401
      */
     public boolean isUnauthorized() {
         return statusCode == 401;
@@ -62,7 +62,7 @@ public class ApiException extends Exception {
     /**
      * Returns {@code true} if the server returned 403 Forbidden.
      *
-     * @return {@code true} for HTTP 403.
+     * @return {@code true} for HTTP 403
      */
     public boolean isForbidden() {
         return statusCode == 403;
@@ -71,7 +71,7 @@ public class ApiException extends Exception {
     /**
      * Returns {@code true} if the server returned 404 Not Found.
      *
-     * @return {@code true} for HTTP 404.
+     * @return {@code true} for HTTP 404
      */
     public boolean isNotFound() {
         return statusCode == 404;
@@ -80,7 +80,7 @@ public class ApiException extends Exception {
     /**
      * Returns {@code true} if the server returned a 5xx error.
      *
-     * @return {@code true} for HTTP 500+.
+     * @return {@code true} for HTTP 500+
      */
     public boolean isServerError() {
         return statusCode >= 500;

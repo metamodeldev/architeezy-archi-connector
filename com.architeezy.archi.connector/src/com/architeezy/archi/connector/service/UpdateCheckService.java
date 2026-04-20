@@ -78,8 +78,8 @@ public final class UpdateCheckService {
     /**
      * Returns {@code true} if the server has a newer version of the given model.
      *
-     * @param model The model to check.
-     * @return true if an update is available.
+     * @param model the model to check
+     * @return true if an update is available
      */
     public boolean hasUpdate(IArchimateModel model) {
         var url = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
@@ -90,8 +90,8 @@ public final class UpdateCheckService {
      * Returns the remote model metadata for an available update, or {@code null} if
      * no update is known.
      *
-     * @param model The model to check.
-     * @return remote metadata, or null.
+     * @param model the model to check
+     * @return remote metadata, or null
      */
     public RemoteModel getAvailableUpdate(IArchimateModel model) {
         var url = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
@@ -102,7 +102,7 @@ public final class UpdateCheckService {
      * Clears the pending-update marker for the given model (called after a
      * successful pull).
      *
-     * @param model The model whose update marker should be removed.
+     * @param model the model whose update marker should be removed
      */
     public void clearUpdate(IArchimateModel model) {
         var url = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
@@ -118,7 +118,7 @@ public final class UpdateCheckService {
      * Registers a listener that is invoked on the calling thread whenever the
      * set of models with available updates changes.
      *
-     * @param listener The listener to register.
+     * @param listener the listener to register
      */
     public void addListener(Runnable listener) {
         listeners.add(listener);
@@ -127,7 +127,7 @@ public final class UpdateCheckService {
     /**
      * Removes a previously registered listener.
      *
-     * @param listener The listener to remove.
+     * @param listener the listener to remove
      */
     public void removeListener(Runnable listener) {
         listeners.remove(listener);

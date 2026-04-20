@@ -77,12 +77,12 @@ public class OAuthManager {
     /**
      * Runs the OAuth 2.0 Authorization Code + PKCE flow for the given server.
      *
-     * @param serverUrl base URL of the Architeezy server.
-     * @param clientId OAuth2 client identifier.
-     * @param authEndpoint authorization endpoint URL.
-     * @param tokenEndpoint token endpoint URL.
-     * @return the obtained token response, or {@code null} if the user cancelled.
-     * @throws OAuthException if the flow fails or times out.
+     * @param serverUrl base URL of the Architeezy server
+     * @param clientId OAuth2 client identifier
+     * @param authEndpoint authorization endpoint URL
+     * @param tokenEndpoint token endpoint URL
+     * @return the obtained token response, or {@code null} if the user cancelled
+     * @throws OAuthException if the flow fails or times out
      */
     public TokenResponse login(String serverUrl, String clientId, String authEndpoint, String tokenEndpoint)
             throws OAuthException {
@@ -142,11 +142,11 @@ public class OAuthManager {
     /**
      * Exchanges a refresh token for a new access token.
      *
-     * @param tokenEndpoint token endpoint URL.
-     * @param clientId OAuth2 client identifier.
-     * @param refreshToken the current refresh token.
-     * @return the new token response.
-     * @throws OAuthException if the refresh request fails.
+     * @param tokenEndpoint token endpoint URL
+     * @param clientId OAuth2 client identifier
+     * @param refreshToken the current refresh token
+     * @return the new token response
+     * @throws OAuthException if the refresh request fails
      */
     public TokenResponse refreshToken(String tokenEndpoint, String clientId, String refreshToken)
             throws OAuthException {
@@ -295,8 +295,8 @@ public class OAuthManager {
     /**
      * Parses key=value pairs from a URL query string (after '?').
      *
-     * @param path the request path including the query string.
-     * @return map of decoded query parameter names to values.
+     * @param path the request path including the query string
+     * @return map of decoded query parameter names to values
      */
     private static Map<String, String> parseQueryParams(String path) {
         var map = new HashMap<String, String>();
@@ -326,9 +326,9 @@ public class OAuthManager {
     /**
      * Extracts the string value for the given JSON key using minimal parsing.
      *
-     * @param json JSON text to search.
-     * @param key field name.
-     * @return the string value, or {@code null} if not found.
+     * @param json JSON text to search
+     * @param key field name
+     * @return the string value, or {@code null} if not found
      */
     public static String extractJsonString(String json, String key) {
         var search = QUOTE + key + QUOTE;
@@ -354,10 +354,10 @@ public class OAuthManager {
     /**
      * Extracts the long value for the given JSON key using minimal parsing.
      *
-     * @param json JSON text to search.
-     * @param key field name.
-     * @param defaultValue value to return if the key is not found or not a number.
-     * @return the numeric value, or {@code defaultValue}.
+     * @param json JSON text to search
+     * @param key field name
+     * @param defaultValue value to return if the key is not found or not a number
+     * @return the numeric value, or {@code defaultValue}
      */
     public static long extractJsonLong(String json, String key, long defaultValue) {
         var valuePos = findJsonValuePosition(json, key);
@@ -395,9 +395,9 @@ public class OAuthManager {
     /**
      * Holds the tokens returned by a successful OAuth token request.
      *
-     * @param accessToken the OAuth2 access token.
-     * @param refreshToken the OAuth2 refresh token.
-     * @param expiresAt epoch millis at which the access token expires.
+     * @param accessToken the OAuth2 access token
+     * @param refreshToken the OAuth2 refresh token
+     * @param expiresAt epoch millis at which the access token expires
      */
     public record TokenResponse(String accessToken, String refreshToken, long expiresAt) {
     }

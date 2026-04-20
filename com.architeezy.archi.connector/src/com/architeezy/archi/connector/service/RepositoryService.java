@@ -55,11 +55,11 @@ public final class RepositoryService {
     /**
      * Lists the models available in the remote repository.
      *
-     * @param profile The connection profile to use.
-     * @param page The page number to retrieve.
-     * @param size The number of items per page.
-     * @return A paged result containing the list of remote models.
-     * @throws Exception If a communication error occurs.
+     * @param profile the connection profile to use
+     * @param page the page number to retrieve
+     * @param size the number of items per page
+     * @return a paged result containing the list of remote models
+     * @throws Exception if a communication error occurs
      */
     public PagedResult<RemoteModel> listModels(ConnectionProfile profile,
             int page, int size) throws Exception {
@@ -79,12 +79,12 @@ public final class RepositoryService {
      * The operation is atomic: if anything fails after the file is written,
      * the file is deleted before the exception propagates.
      *
-     * @param profile The connection profile to use.
-     * @param remote The remote model to import.
-     * @param targetFile The local file where the model should be saved.
-     * @param monitor Progress monitor for updating the UI.
-     * @return The imported IArchimateModel.
-     * @throws Exception If the import process fails.
+     * @param profile the connection profile to use
+     * @param remote the remote model to import
+     * @param targetFile the local file where the model should be saved
+     * @param monitor progress monitor for updating the UI
+     * @return the imported IArchimateModel
+     * @throws Exception if the import process fails
      */
     public IArchimateModel importModel(ConnectionProfile profile, RemoteModel remote, File targetFile,
             IProgressMonitor monitor) throws Exception {
@@ -157,13 +157,13 @@ public final class RepositoryService {
      * Creates a new model entry on the server, uploads the current content,
      * sets {@link ConnectorProperties}, and saves a base snapshot.
      *
-     * @param profile The connection profile to use.
-     * @param model The model to publish.
-     * @param name The name for the remote model.
-     * @param description The description for the remote model.
-     * @param monitor Progress monitor for updating the UI.
-     * @return The created RemoteModel.
-     * @throws Exception If the publish process fails.
+     * @param profile the connection profile to use
+     * @param model the model to publish
+     * @param name the name for the remote model
+     * @param description the description for the remote model
+     * @param monitor progress monitor for updating the UI
+     * @return the created RemoteModel
+     * @throws Exception if the publish process fails
      */
     public RemoteModel publishModel(ConnectionProfile profile, IArchimateModel model, String name, String description,
             IProgressMonitor monitor) throws Exception {
@@ -197,11 +197,11 @@ public final class RepositoryService {
     /**
      * Serializes the local model and exports it to the given project on the server.
      *
-     * @param profile The connection profile to use.
-     * @param model The model to export.
-     * @param projectId The target project ID.
-     * @param monitor Progress monitor for updating the UI.
-     * @throws Exception If the export process fails.
+     * @param profile the connection profile to use
+     * @param model the model to export
+     * @param projectId the target project identifier
+     * @param monitor progress monitor for updating the UI
+     * @throws Exception if the export process fails
      */
     public void exportModel(ConnectionProfile profile, IArchimateModel model, String projectId,
             IProgressMonitor monitor) throws Exception {
@@ -230,9 +230,9 @@ public final class RepositoryService {
     /**
      * Lists the projects available in the remote repository.
      *
-     * @param profile The connection profile to use.
-     * @return List of remote projects.
-     * @throws Exception If a communication error occurs.
+     * @param profile the connection profile to use
+     * @return list of remote projects
+     * @throws Exception if a communication error occurs
      */
     public List<RemoteProject> listProjects(ConnectionProfile profile) throws Exception {
         var token = AuthService.INSTANCE.getValidAccessToken(profile);
@@ -258,11 +258,11 @@ public final class RepositoryService {
      * <li>Save a new base snapshot and clear the update indicator.</li>
      * </ol>
      *
-     * @param model The locally open model to replace.
-     * @param monitor Progress monitor.
-     * @return The newly opened {@link IArchimateModel}.
-     * @throws IllegalStateException If the model is not tracked
-     * @throws Exception If the pull fails.
+     * @param model the locally open model to replace
+     * @param monitor progress monitor
+     * @return the newly opened {@link IArchimateModel}
+     * @throws IllegalStateException if the model is not tracked
+     * @throws Exception if the pull fails
      */
     public IArchimateModel pullModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
         var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
@@ -345,9 +345,9 @@ public final class RepositoryService {
     /**
      * Deletes the specified remote model from the repository.
      *
-     * @param profile The connection profile to use.
-     * @param remote The remote model to delete.
-     * @throws Exception If the deletion fails.
+     * @param profile the connection profile to use
+     * @param remote the remote model to delete
+     * @throws Exception if the deletion fails
      */
     public void deleteModel(ConnectionProfile profile, RemoteModel remote) throws Exception {
         var token = AuthService.INSTANCE.getValidAccessToken(profile);
