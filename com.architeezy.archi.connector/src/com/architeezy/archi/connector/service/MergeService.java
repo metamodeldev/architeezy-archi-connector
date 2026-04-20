@@ -9,28 +9,35 @@
  */
 package com.architeezy.archi.connector.service;
 
-import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.emf.common.util.BasicMonitor;
+import org.eclipse.emf.compare.Comparison;
+import org.eclipse.emf.compare.ConflictKind;
+import org.eclipse.emf.compare.DifferenceSource;
+import org.eclipse.emf.compare.DifferenceState;
+import org.eclipse.emf.compare.EMFCompare;
+import org.eclipse.emf.compare.merge.BatchMerger;
+import org.eclipse.emf.compare.merge.IMerger;
+import org.eclipse.emf.compare.scope.DefaultComparisonScope;
+import org.eclipse.emf.ecore.resource.Resource;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.widgets.Display;
 
 import com.archimatetool.model.IArchimateModel;
-import com.architeezy.archi.connector.Messages;
+import com.architeezy.archi.connector.dialog.ConflictResolutionDialog;
+import com.architeezy.archi.connector.io.ModelSerializer;
 
 /**
- * Handles the DIVERGED scenario where both the local model and the remote model
- * have changed since their last known common base snapshot.
+ * Performs 3-way merges for the DIVERGED scenario where both local and remote
+ * models have changed since their last common base snapshot.
  *
  * <p>
- * Asks the user whether to overwrite local changes with the remote version.
- * Proper 3-way EMF DiffMerge UI integration is planned for a future release
- * once {@code org.eclipse.emf.diffmerge.ui} and its transitive dependencies
- * (including {@code org.eclipse.emf.edit.ui} and {@code org.eclipse.compare})
- * are available in the Archi runtime.
+ * Uses EMF Compare to compute a structural diff of base, local, and remote.
+ * Non-conflicting remote changes are applied automatically. Real conflicts are
+ * presented to the user via {@link ConflictResolutionDialog}.
  *
  * <p>
- * Must be called from a background thread; this method switches to the UI
- * thread internally to show the dialog.
- *
- * @return {@code true} if the user chose to apply the remote version
+ * Must be called from a background thread; UI operations switch to the UI
+ * thread internally.
  */
 public final class MergeService {
 
@@ -41,22 +48,77 @@ public final class MergeService {
     }
 
     /**
-     * Asks the user how to resolve a diverged state where both local and remote
-     * models have changed since the last known base.
+     * Computes a 3-way merge of the live model against the base snapshot and
+     * remote content.
      *
-     * @param model the local model with conflicting changes
-     * @return {@code true} if the user chose to apply the remote version,
-     *         {@code false} if the user chose to keep the local version
+     * <p>
+     * Non-conflicting remote changes are applied automatically. Real conflicts
+     * are shown in the conflict-resolution dialog for the user to resolve.
+     *
+     * @param liveModel the locally open model
+     * @param baseBytes the base snapshot bytes (last known common state)
+     * @param remoteBytes the remote model bytes downloaded from the server
+     * @return the merged model bytes ready to pass to
+     *         {@code RepositoryService.applyNonDestructivePull}, or {@code null}
+     *         if the user cancelled the conflict-resolution dialog
+     * @throws Exception if serialization or comparison fails
      */
-    public boolean askUserToApplyRemote(IArchimateModel model) {
-        var result = new boolean[1];
-        Display.getDefault().syncExec(() -> {
-            var shell = Display.getDefault().getActiveShell();
-            result[0] = MessageDialog.openQuestion(shell,
-                Messages.MergeService_conflictTitle,
-                Messages.MergeService_conflictMessage);
-        });
-        return result[0];
+    public byte[] computeMergedContent(IArchimateModel liveModel, byte[] baseBytes, byte[] remoteBytes)
+            throws Exception {
+        var baseModel = ModelSerializer.INSTANCE.deserializeInMemory(baseBytes);
+        var localCopy = ModelSerializer.INSTANCE.deserializeInMemory(
+                ModelSerializer.INSTANCE.serialize(liveModel));
+        var remoteModel = ModelSerializer.INSTANCE.deserializeInMemory(remoteBytes);
+
+        var localResource = localCopy.eResource();
+        var remoteResource = remoteModel.eResource();
+        var baseResource = baseModel.eResource();
+
+        var scope = new DefaultComparisonScope(localResource, remoteResource, baseResource);
+        var comparison = EMFCompare.builder().build().compare(scope);
+
+        boolean hasRealConflicts = comparison.getConflicts().stream()
+                .anyMatch(c -> c.getKind() == ConflictKind.REAL);
+
+        if (!hasRealConflicts) {
+            applyAllRemoteChanges(comparison);
+            return ModelSerializer.INSTANCE.serialize(localCopy);
+        }
+
+        var registry = IMerger.RegistryImpl.createStandaloneInstance();
+        byte[][] mergedBytes = { null };
+        Exception[] runError = { null };
+        Display.getDefault().syncExec(() ->
+                showConflictDialog(comparison, localResource, registry, mergedBytes, runError));
+
+        if (runError[0] != null) {
+            throw runError[0];
+        }
+        return mergedBytes[0];
+    }
+
+    private static void showConflictDialog(Comparison comparison, Resource localResource,
+            IMerger.Registry registry, byte[][] mergedBytes, Exception[] runError) {
+        var dialog = new ConflictResolutionDialog(
+                Display.getDefault().getActiveShell(), comparison, localResource, registry);
+        if (dialog.open() == Window.OK) {
+            if (dialog.getMergeError() != null) {
+                runError[0] = dialog.getMergeError();
+            } else {
+                mergedBytes[0] = dialog.getMergedContent();
+            }
+        }
+    }
+
+    private static void applyAllRemoteChanges(Comparison comparison) {
+        var remoteDiffs = comparison.getDifferences().stream()
+                .filter(d -> d.getSource() == DifferenceSource.RIGHT)
+                .filter(d -> d.getState() == DifferenceState.UNRESOLVED)
+                .toList();
+
+        var registry = IMerger.RegistryImpl.createStandaloneInstance();
+        var batchMerger = new BatchMerger(registry);
+        batchMerger.copyAllRightToLeft(remoteDiffs, new BasicMonitor());
     }
 
 }

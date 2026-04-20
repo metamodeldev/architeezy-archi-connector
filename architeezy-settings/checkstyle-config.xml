@@ -286,9 +286,6 @@
 
     <!-- Misc -->
     <module name="ArrayTypeStyle"/>
-    <module name="AvoidEscapedUnicodeCharacters">
-      <property name="allowEscapesForControlCharacters" value="true"/>
-    </module>
     <module name="Indentation">
       <property name="caseIndent" value="0"/>
       <property name="arrayInitIndent" value="8"/>

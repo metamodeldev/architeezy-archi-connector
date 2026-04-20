@@ -37,7 +37,6 @@ import com.architeezy.archi.connector.service.UpdateCheckService;
  * newer version available on the Architeezy server, and to supply tooltip text
  * with version details.
  */
-@SuppressWarnings("checkstyle:AvoidEscapedUnicodeCharacters")
 public final class ModelTreeDecorator {
 
     /** The singleton instance. */
@@ -117,23 +116,25 @@ public final class ModelTreeDecorator {
         if (display == null || display.isDisposed()) {
             return;
         }
-        display.asyncExec(() -> {
-            // Install on the viewer now if not yet done (tree may not have been
-            // available when install() was first called)
-            if (installedViewer == null || installedViewer.getControl().isDisposed()) {
-                installedViewer = null;
-                tryInstallViewer();
+        display.asyncExec(this::refreshDecoratedViewer);
+    }
+
+    private void refreshDecoratedViewer() {
+        // Install on the viewer now if not yet done (tree may not have been
+        // available when install() was first called)
+        if (installedViewer == null || installedViewer.getControl().isDisposed()) {
+            installedViewer = null;
+            tryInstallViewer();
+        }
+        var viewer = installedViewer;
+        if (viewer == null || viewer.getControl().isDisposed()) {
+            return;
+        }
+        for (var model : IEditorModelManager.INSTANCE.getModels()) {
+            if (viewer.testFindItem(model) != null) {
+                viewer.update(model, null);
             }
-            var viewer = installedViewer;
-            if (viewer == null || viewer.getControl().isDisposed()) {
-                return;
-            }
-            for (var model : IEditorModelManager.INSTANCE.getModels()) {
-                if (viewer.testFindItem(model) != null) {
-                    viewer.update(model, null);
-                }
-            }
-        });
+        }
     }
 
     // -----------------------------------------------------------------------

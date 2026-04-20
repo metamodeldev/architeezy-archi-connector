@@ -15,8 +15,8 @@
     <modules>
         <module>com.architeezy.archi.connector</module>
         <module>com.architeezy.archi.connector.feature</module>
-        <module>com.architeezy.archi.connector.target</module>
         <module>com.architeezy.archi.connector.repository</module>
+        <module>com.architeezy.archi.connector.target</module>
     </modules>
 
     <build>

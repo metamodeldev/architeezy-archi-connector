@@ -266,23 +266,25 @@ public final class RepositoryService {
      * The operation first classifies the relationship between the local model,
      * the remote model, and the stored base snapshot into one of four scenarios:
      * <ul>
-     * <li><b>UP_TO_DATE</b> — nothing to do.</li>
-     * <li><b>SIMPLE_PULL</b> — remote changed, local did not; remote changes are
-     *     applied via {@link ModelImporter} so open diagrams and the Undo stack
-     *     are preserved.</li>
-     * <li><b>SIMPLE_PUSH</b> — local changed, remote did not; the user is reminded
-     *     to push their changes.</li>
-     * <li><b>DIVERGED</b> — both sides changed; the user is asked whether to
-     *     overwrite local changes with the remote version.</li>
+     * <li><b>UP_TO_DATE</b> - nothing to do.</li>
+     * <li><b>SIMPLE_PULL</b> - remote changed, local did not; remote changes are
+     * applied via {@link ModelImporter} so open diagrams and the Undo stack
+     * are preserved.</li>
+     * <li><b>SIMPLE_PUSH</b> - local changed, remote did not; the user is reminded
+     * to push their changes.</li>
+     * <li><b>DIVERGED</b> - both sides changed; the user is asked whether to
+     * overwrite local changes with the remote version.</li>
      * </ul>
      *
      * @param model the locally open model to update
      * @param monitor progress monitor
-     * @return the same {@link IArchimateModel} instance (never replaced)
+     * @return {@code true} if remote changes were applied, {@code false} if the
+     *         user cancelled the conflict-resolution dialog or no changes were
+     *         applied
      * @throws IllegalStateException if the model is not tracked
      * @throws Exception if the pull fails
      */
-    public IArchimateModel pullModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
+    public boolean pullModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
         var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
         if (modelUrl == null) {
             throw new IllegalStateException("Model is not tracked by Architeezy"); //$NON-NLS-1$
@@ -314,30 +316,36 @@ public final class RepositoryService {
         switch (scenario) {
         case UP_TO_DATE:
             UpdateCheckService.INSTANCE.clearUpdate(model);
-            return model;
+            return false;
         case SIMPLE_PULL:
             if (monitor != null) {
                 monitor.subTask("Applying remote changes"); //$NON-NLS-1$
             }
             applyNonDestructivePull(model, remoteContent, remote, modelId);
-            return model;
+            return true;
         case SIMPLE_PUSH:
             Display.getDefault().syncExec(() -> MessageDialog.openInformation(
                     Display.getDefault().getActiveShell(),
                     Messages.PullHandler_title,
                     Messages.PullHandler_remoteUnchanged));
             UpdateCheckService.INSTANCE.clearUpdate(model);
-            return model;
+            return false;
         case DIVERGED:
-            if (MergeService.INSTANCE.askUserToApplyRemote(model)) {
-                if (monitor != null) {
-                    monitor.subTask("Applying remote changes"); //$NON-NLS-1$
-                }
-                applyNonDestructivePull(model, remoteContent, remote, modelId);
+            if (monitor != null) {
+                monitor.subTask("Resolving conflicts"); //$NON-NLS-1$
             }
-            return model;
+            var baseBytes = SnapshotStore.INSTANCE.loadSnapshot(modelId);
+            var mergedBytes = MergeService.INSTANCE.computeMergedContent(model, baseBytes, remoteContent);
+            if (mergedBytes == null) {
+                return false;
+            }
+            if (monitor != null) {
+                monitor.subTask("Applying merged changes"); //$NON-NLS-1$
+            }
+            applyNonDestructivePull(model, mergedBytes, remote, modelId);
+            return true;
         default:
-            return model;
+            return false;
         }
     }
 
@@ -367,7 +375,8 @@ public final class RepositoryService {
     /**
      * Pure mapping from comparison flags to scenario, extracted for unit testing.
      *
-     * @param localEqualsBase whether the serialized local model equals the base snapshot
+     * @param localEqualsBase whether the serialized local model equals the base
+     *        snapshot
      * @param remoteEqualsBase whether the remote content equals the base snapshot
      * @return the applicable {@link SyncScenario}
      */
@@ -403,20 +412,7 @@ public final class RepositoryService {
         var incoming = ModelSerializer.INSTANCE.deserializeInMemory(remoteContent);
 
         var uiError = new Exception[1];
-        Display.getDefault().syncExec(() -> {
-            try {
-                var importer = new ModelImporter();
-                importer.setUpdateAll(true);
-                importer.setUpdateFolderStructure(true);
-                importer.doImport(incoming, target);
-                ConnectorProperties.setProperty(target, ConnectorProperties.KEY_URL, remote.selfUrl());
-                ConnectorProperties.setProperty(target,
-                        ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME, remote.lastModified());
-                IEditorModelManager.INSTANCE.saveModel(target);
-            } catch (Exception e) {
-                uiError[0] = e;
-            }
-        });
+        Display.getDefault().syncExec(() -> runImportOnDisplay(incoming, target, remote, uiError));
         if (uiError[0] != null) {
             throw uiError[0];
         }
@@ -429,6 +425,22 @@ public final class RepositoryService {
         }
 
         UpdateCheckService.INSTANCE.clearUpdate(target);
+    }
+
+    private static void runImportOnDisplay(IArchimateModel incoming, IArchimateModel target,
+            RemoteModel remote, Exception[] uiError) {
+        try {
+            var importer = new ModelImporter();
+            importer.setUpdateAll(true);
+            importer.setUpdateFolderStructure(true);
+            importer.doImport(incoming, target);
+            ConnectorProperties.setProperty(target, ConnectorProperties.KEY_URL, remote.selfUrl());
+            ConnectorProperties.setProperty(target,
+                    ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME, remote.lastModified());
+            IEditorModelManager.INSTANCE.saveModel(target);
+        } catch (Exception e) {
+            uiError[0] = e;
+        }
     }
 
     // -----------------------------------------------------------------------

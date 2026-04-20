@@ -138,6 +138,27 @@ public final class Messages extends NLS {
     // ModelTreeDecorator
     public static String Decorator_updateTooltip;
 
+    // ConflictResolutionDialog
+    public static String ConflictDialog_title;
+
+    public static String ConflictDialog_description;
+
+    public static String ConflictDialog_colStructure;
+
+    public static String ConflictDialog_colLocal;
+
+    public static String ConflictDialog_colRemote;
+
+    public static String ConflictDialog_acceptAllLocal;
+
+    public static String ConflictDialog_acceptAllRemote;
+
+    public static String ConflictDialog_showAllChanges;
+
+    public static String ConflictDialog_changeAdded;
+
+    public static String ConflictDialog_changeDeleted;
+
     // PullFromArchiteezyHandler
     public static String PullHandler_title;
 
@@ -154,11 +175,6 @@ public final class Messages extends NLS {
     public static String PullHandler_failed;
 
     public static String PullHandler_remoteUnchanged;
-
-    // MergeService
-    public static String MergeService_conflictTitle;
-
-    public static String MergeService_conflictMessage;
 
     private static final String BUNDLE_NAME = "com.architeezy.archi.connector.messages"; //$NON-NLS-1$
 

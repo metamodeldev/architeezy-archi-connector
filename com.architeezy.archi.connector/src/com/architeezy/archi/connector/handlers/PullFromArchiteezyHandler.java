@@ -17,11 +17,13 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.IJobFunction;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.ISelectionListener;
 import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchWindow;
@@ -72,27 +74,15 @@ public class PullFromArchiteezyHandler extends AbstractHandler {
             return null;
         }
         if (IEditorModelManager.INSTANCE.isModelDirty(model)) {
-            var proceed = MessageDialog.openQuestion(shell,
-                    Messages.PullHandler_title, Messages.PullHandler_dirtyConfirm);
+            var proceed = MessageDialog.openQuestion(shell, Messages.PullHandler_title,
+                    Messages.PullHandler_dirtyConfirm);
             if (!proceed) {
                 return null;
             }
         }
 
-        var job = Job.create(Messages.PullHandler_jobName, (IProgressMonitor monitor) -> {
-            IStatus status = Status.OK_STATUS;
-            try {
-                RepositoryService.INSTANCE.pullModel(model, monitor);
-                Display.getDefault().asyncExec(() -> MessageDialog.openInformation(shell, Messages.PullHandler_title,
-                        Messages.PullHandler_success));
-            } catch (Exception e) {
-                ConnectorPlugin.getInstance().getLog().error("Pull failed", e); //$NON-NLS-1$
-                status = Status.error(MessageFormat.format(Messages.PullHandler_failed, e.getMessage()), e);
-                Display.getDefault().asyncExec(() -> MessageDialog.openError(shell, Messages.PullHandler_title,
-                        MessageFormat.format(Messages.PullHandler_failed, e.getMessage())));
-            }
-            return status;
-        });
+        var job = Job.create(Messages.PullHandler_jobName,
+                (IJobFunction) monitor -> executePullJob(model, shell, monitor));
         job.setUser(true);
         job.schedule();
         return null;
@@ -109,6 +99,23 @@ public class PullFromArchiteezyHandler extends AbstractHandler {
         UpdateCheckService.INSTANCE.removeListener(updateListener);
         unhookSelectionListener();
         super.dispose();
+    }
+
+    private static IStatus executePullJob(IArchimateModel model, Shell shell, IProgressMonitor monitor) {
+        var status = Status.OK_STATUS;
+        try {
+            var applied = RepositoryService.INSTANCE.pullModel(model, monitor);
+            if (applied) {
+                Display.getDefault().asyncExec(() -> MessageDialog.openInformation(shell,
+                        Messages.PullHandler_title, Messages.PullHandler_success));
+            }
+        } catch (Exception e) {
+            ConnectorPlugin.getInstance().getLog().error("Pull failed", e); //$NON-NLS-1$
+            status = Status.error(MessageFormat.format(Messages.PullHandler_failed, e.getMessage()), e);
+            Display.getDefault().asyncExec(() -> MessageDialog.openError(shell, Messages.PullHandler_title,
+                    MessageFormat.format(Messages.PullHandler_failed, e.getMessage())));
+        }
+        return status;
     }
 
     // -----------------------------------------------------------------------
@@ -195,7 +202,12 @@ public class PullFromArchiteezyHandler extends AbstractHandler {
         if (!PlatformUI.isWorkbenchRunning()) {
             return null;
         }
-        return PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+        var w = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
+        if (w != null) {
+            return w;
+        }
+        var windows = PlatformUI.getWorkbench().getWorkbenchWindows();
+        return windows.length > 0 ? windows[0] : null;
     }
 
 }

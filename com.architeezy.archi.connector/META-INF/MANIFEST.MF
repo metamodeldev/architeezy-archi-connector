@@ -16,7 +16,12 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.equinox.security.ui,
  com.archimatetool.editor,
  com.archimatetool.model,
- com.archimatetool.modelimporter
+ com.archimatetool.modelimporter,
+ org.eclipse.compare,
+ org.eclipse.emf.compare,
+ org.eclipse.emf.edit,
+ org.eclipse.emf.compare.edit,
+ org.eclipse.emf.compare.ide.ui
 Export-Package: com.architeezy.archi.connector,
  com.architeezy.archi.connector.auth,
  com.architeezy.archi.connector.api,
