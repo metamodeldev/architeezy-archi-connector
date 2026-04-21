@@ -1,228 +1,203 @@
-# SR-2: Repository
+# SR-1: Repository Interaction
 
 ## Scenarios
 
-### SR-2.1: Browse Repository
+### SR-1.1: Manage Connection Profiles
 
-The system displays the remote repository structure, allowing the user to explore the available
-model hierarchy.
-
-#### Functional Requirements
-
-- [FR-2.1](../functional-requirements.md#fr-2-repository): Browse the remote repository structure.
-
-#### User Story
-
-As a user, I want to navigate the repository tree so that I can find models organized within folders
-or groups.
-
-#### Preconditions
-
-- A connection profile is active and the session is authenticated.
-
-#### Steps
-
-1. Open the repository browser panel.
-   - The system fetches and displays the top-level repository structure (folders, groups, or
-     projects) from the server.
-   - A loading indicator is shown while the data is being retrieved.
-2. Expand a folder or group.
-   - The system fetches and displays its child items.
-3. Collapse a previously expanded folder.
-   - The child items are hidden; no server request is made.
-
-#### Edge Cases
-
-- **Empty Repository**: If the repository contains no items accessible to the user, an "Empty
-  repository" message is displayed.
-- **Fetch Failure**: If the repository structure cannot be loaded, an error notification is shown
-  with a retry option. The previously loaded state (if any) is preserved.
-- **Permission Boundary**: Items the user lacks access to are not shown; the server enforces access
-  control.
-
-### SR-2.2: Search Models
-
-The system filters the repository contents in real-time based on a user-provided query.
+The system allows the user to create and maintain server connection settings within the import or
+export interface.
 
 #### Functional Requirements
 
-- [FR-2.2](../functional-requirements.md#fr-2-repository): Search for models within the repository.
+- [FR-1.1](../functional-requirements.md#fr-1-repository-interaction): Manage server profiles with
+  persistent authentication tokens.
 
 #### User Story
 
-As a user, I want to search for a model by name so that I can locate it quickly without manually
-browsing the full hierarchy.
+As a user, I want to save server addresses as profiles so that I can easily switch between different
+environments.
 
 #### Preconditions
 
-- A connection profile is active and the session is authenticated.
+- The Import or Export dialog is open.
 
 #### Steps
 
-1. Enter a query in the search field of the repository browser.
-   - The system sends the query to the server and displays matching models.
-   - Results appear within the repository browser, ordered by relevance or name.
-2. Clear the search field.
-   - The repository browser returns to displaying the full repository structure.
+1. Access the profile management section within the dialog.
+   - Dropdown list of existing profiles and a form with current settings are displayed.
+2. Add a new profile by specifying a name, server URL, client ID, and OAuth endpoint URLs.
+   - Profile is saved and appears in the selection list.
+3. Edit an existing profile's fields and save changes.
+   - Profile settings are updated and authentication state is reset to "Disconnected".
+4. Delete a profile.
+   - Profile is removed from the list and its associated tokens are deleted.
+5. Set a profile as the default.
+   - Profile is marked for automatic selection upon the next dialog opening.
 
 #### Edge Cases
 
-- **No Matches**: If no models match the query, a "No results found" message is displayed.
-- **Fetch Failure**: If the search request fails, an error notification is shown with a retry
-  option. The search field retains its current value.
-- **Empty Query**: Submitting an empty query clears the search results and restores the full
-  repository view.
+- **Duplicate Profile Name**: Error message is shown and saving is prevented.
+- **Invalid URL**: Validation error is displayed if the URL is malformed or unreachable.
 
-### SR-2.3: View Model Metadata
+### SR-1.2: Authenticate and Logout
 
-The system displays descriptive metadata for a selected model without loading its full content.
+The system manages user sessions via OAuth 2.0 Authorization Code Flow with PKCE.
 
 #### Functional Requirements
 
-- [FR-2.3](../functional-requirements.md#fr-2-repository): View model metadata.
+- [FR-1.1](../functional-requirements.md#fr-1-repository-interaction): Manage server profiles with
+  persistent authentication tokens.
 
 #### User Story
 
-As a user, I want to see information about a model — such as its description, author, and last
-modified date — before deciding to import it.
+As a user, I want to log in once per server and stay authenticated so that I can perform repository
+operations without re-entering credentials.
 
 #### Preconditions
 
-- A connection profile is active and the session is authenticated.
+- A connection profile is selected.
 
 #### Steps
 
-1. Select a model in the repository browser.
-   - The system displays a metadata panel showing at minimum: model name, description, author, and
-     last modified date.
-   - A loading indicator is shown while metadata is being retrieved.
+1. Initiate the login process for the selected profile.
+   - System browser opens to the OAuth authorization URL.
+   - Profile status changes to "Connecting" and the button label changes to "Cancel".
+2. Complete the authentication in the browser.
+   - Connection status in the dialog changes to "Connected".
+3. Initiate the logout process.
+   - Stored tokens are cleared and status changes to "Disconnected".
 
 #### Edge Cases
 
-- **Partial Metadata**: If some metadata fields are absent from the server response, those fields
-  are shown as empty or with a "Not available" placeholder.
-- **Fetch Failure**: If metadata cannot be retrieved, an error notification is shown and the
-  metadata panel displays a generic error state.
+- **Authentication Cancelled**: Local callback server closes and the profile returns to
+  "Disconnected".
+- **Token Expiration**: System attempts an automatic refresh. If failed, profile transitions to
+  "Session Expired".
 
-### SR-2.4: Import Model
+### SR-1.3: Import Model
 
-The system downloads a model from the repository and adds it to the local Archi workspace.
+The system enables the user to browse remote models and download one into the local workspace.
 
 #### Functional Requirements
 
-- [FR-2.4](../functional-requirements.md#fr-2-repository): Import a model from the repository to the
-  local workspace.
-
-#### User Story
-
-As a user, I want to import a model from the repository so that I can view and edit it locally in
-Archi.
-
-#### Preconditions
-
-- A connection profile is active and the session is authenticated.
-- The target model is visible in the repository browser.
+- [FR-1.2](../functional-requirements.md#fr-1-repository-interaction): Navigate the remote project
+  hierarchy.
+- [FR-1.3](../functional-requirements.md#fr-1-repository-interaction): Import a model from the
+  remote repository.
 
 #### Steps
 
-1. Select a model in the repository browser and initiate the import action.
-   - The system prompts the user to choose a local destination folder if required.
-2. Confirm the import.
-   - The system downloads the model content from the server and creates the model in the local Archi
-     workspace.
-   - A progress indicator is shown during the download.
-   - Upon completion, the model appears in the local workspace and is registered as a tracked model
-     linked to its remote counterpart.
+1. Browse the list of remote models.
+   - Paginated, searchable table of available models (name, author, date) is displayed.
+2. Select a remote model and choose a local save location.
+   - File chooser dialog opens for path selection.
+3. Confirm the import action.
+   - Model is downloaded and opened in the Archi editor.
+   - Model is registered as "tracked" with internal properties for URL and modification date.
 
 #### Edge Cases
 
-- **Already Imported**: If the model is already present in the local workspace and linked to the
-  same remote reference, the system warns the user and asks for confirmation before overwriting.
-- **Insufficient Permissions**: If the user lacks read access to the model, an error notification is
-  shown and no local file is created.
-- **Download Failure**: If the download fails partway through, any partially created local file is
-  removed and an error notification is shown with a retry option.
-- **Disk Space**: If the local storage is insufficient, the system shows an error and aborts the
-  import without leaving partial files.
+- **Already Imported**: User is notified and suggested to use the Pull operation.
+- **Empty Projects**: Empty state message is shown in the model list.
 
-### SR-2.5: Publish Model
+### SR-1.4: Export Model
 
-The system uploads a local model to the repository, making it available on the server for the first
-time.
+The system allows the user to publish a local model to a chosen project in the remote repository.
 
 #### Functional Requirements
 
-- [FR-2.5](../functional-requirements.md#fr-2-repository): Publish a local model to the repository.
+- [FR-1.2](../functional-requirements.md#fr-1-repository-interaction): Navigate the remote project
+  hierarchy.
+- [FR-1.4](../functional-requirements.md#fr-1-repository-interaction): Export a local model to the
+  remote repository.
 
 #### User Story
 
-As a user, I want to publish a locally created model to the repository so that my team can access
-it.
+As a user, I want to upload a new local model to the server so that it can be shared with the team.
 
 #### Preconditions
 
-- A connection profile is active and the session is authenticated.
-- The model to be published exists in the local Archi workspace and is not yet linked to a remote
-  repository entry.
+- A connection profile is active and the session is authenticated. Authentication is mandatory for
+  Export.
+- A local model is currently open in the Archi editor.
 
 #### Steps
 
-1. Select a local model and initiate the publish action.
-   - The system displays a publish dialog prompting for the target location in the repository
-     (folder or group) and an optional description.
-2. Confirm the publish settings.
-   - The system uploads the model to the specified location in the repository.
-   - A progress indicator is shown during the upload.
-   - Upon completion, the model is linked to its new remote counterpart and tracked for future
-     synchronization.
+1. Initiate the Export action for the current model.
+   - "Next" button remains disabled until the profile status is "Connected".
+2. Browse and select a destination project on the server.
+   - Searchable list of remote projects is displayed.
+3. Confirm the export action.
+   - Model is serialized, uploaded, and linked to the new remote entry.
+   - Local model becomes "tracked".
 
 #### Edge Cases
 
-- **Name Conflict**: If a model with the same name already exists in the target location, the system
-  warns the user and requires confirmation before proceeding.
-- **Insufficient Permissions**: If the user lacks write access to the target location, an error
-  notification is shown and the publish is aborted.
-- **Upload Failure**: If the upload fails, no partial model is created on the server and an error
-  notification is shown with a retry option.
+- **Access Denied**: Permission error is displayed and the model remains untracked.
+- **Upload Failure**: Operation is aborted with no partial data committed to the server.
 
 ## Business Rules
 
-- **Tracking**: A model is considered **tracked** once it has been imported or published. Tracked
-  models have a persistent link between the local workspace entry and the remote repository
-  identifier.
-- **Untracked Models**: Local models that have never been published, and remote models that have
-  never been imported, are untracked. Synchronization operations are only available for tracked
-  models.
-- **Search Scope**: The search query is sent to the server; local workspace models are not included
-  in repository search results.
-- **Access Control**: Repository access control is enforced server-side. The plugin does not
-  implement or cache permission rules.
-- **Import Atomicity**: An import operation is all-or-nothing. A failed import must not leave a
-  partial model in the local workspace.
+### Data Integrity and Tracking
 
-## UI/UX Functional Details
+- **Atomic Operations**: Import and Export must be atomic; failed transfers must not result in
+  partial models or broken tracking links.
+- **Model Tracking**: Tracking state is stored directly inside the `.archimate` file (not in sidecar
+  files) via two properties: Server URL and Last Modification Date.
+- **Snapshot on Sync**: A base snapshot reflecting the exact synced state must be saved immediately
+  after every successful Import, Export, or Pull.
+- **Automatic Naming**: Exported files are auto-named as `{modelName}-{date}-{time}.archimate` to
+  avoid collisions.
 
-- **Feedback**: A loading indicator is shown for any repository fetch or import/publish operation
-  exceeding 200ms.
-- **Repository Tree**: The repository browser uses a tree view with lazy-loading of child nodes on
-  expansion.
-- **Search Placement**: The search field is persistent at the top of the repository browser and
-  takes focus immediately when the panel is opened.
-- **Action Availability**: Import and publish actions are context-sensitive: import is available
-  only for remote, untracked models; publish is available only for local, untracked models.
-- **Progress Reporting**: Long-running import and publish operations display a progress bar with a
-  cancel option.
+### Security and Authentication
+
+- **Authentication Requirements**: Export always requires authentication. Import browsing may be
+  public, but downloading model content always requires a session.
+- **Secure Storage**: Access and refresh tokens are stored in the OS keychain via Eclipse Equinox
+  Secure Preferences.
+- **Session Exclusivity**: Only one server profile can be active for a specific operation at a time.
+- **Profile States**:
+  - **Disconnected**: No valid tokens exist.
+  - **Connecting**: Browser flow is active.
+  - **Connected**: Valid tokens are ready for use.
+  - **Session Expired**: Refresh token failed; re-authentication required.
+
+### Profile Configuration
+
+- **Persistence**: Profiles and tokens must persist across application restarts.
+- **Profile Structure**: Profiles must include Name, Server URL, Client ID, Authorization Endpoint,
+  and Token Endpoint.
+- **Default Profile**: A default production profile is created on the first launch.
+- **Reset on Edit**: Changing a profile's URL or endpoints automatically resets its authentication
+  state.
+
+## UI/UX
+
+- **Profile Selection**: A dropdown menu for profiles is present in both Import and Export wizards.
+  New profiles can be created and saved from within the wizard without leaving the flow.
+- **Visual Status**: The authentication status of the selected profile is shown in a dedicated
+  section of the wizard page, along with action buttons (Sign In / Sign Out / Cancel).
+- **Import Wizard Authentication**: The Import wizard does not require authentication to open; the
+  profile selection page allows browsing with an unauthenticated profile. The Next button is always
+  enabled. If the subsequent model download fails due to missing authentication, the user is
+  prompted at that point.
+- **Export Wizard Authentication**: The Export wizard requires authentication before the user can
+  proceed to the project selection page. The Next button is disabled until the profile status is
+  "Connected".
+- **Progress Feedback**: A progress bar and a "Cancel" button are displayed during model upload and
+  download operations, which run on a background thread.
 
 ## Technical Notes
 
-- **API**: All repository operations use the Architeezy REST API authenticated with the active
-  profile's access token.
-- **Lazy Loading**: Child nodes in the repository tree are fetched on demand when a parent node is
-  expanded for the first time. Subsequent expansions use the cached response for the duration of the
-  session.
-- **Search Debounce**: Search queries are debounced by 300ms to avoid sending a request on every
-  keystroke.
-- **Import Format**: The server returns model data in the ArchiMate Exchange Format (AEF). The
-  plugin uses the Archi model import API to load it into the workspace.
-- **Tracking Storage**: The remote-to-local model link is stored in the plugin's workspace metadata,
-  not in the model file itself, to avoid modifying the canonical model format.
+- **Authentication**: Authentication is implemented via OAuth 2.0 Authorization Code Flow with PKCE.
+  No client secret is stored on the user's machine.
+- **Token Storage**: Access and refresh tokens are stored in Eclipse Equinox Secure Preferences,
+  which use the OS keychain on supported platforms. Tokens are keyed by a hash of the server URL.
+- **Communication**: All repository interactions are performed via the Architeezy REST API over
+  HTTPS using HAL+JSON as the response format.
+- **Tracking Metadata**: The server URL and last modification timestamp are stored as named
+  properties directly inside the `.archimate` file. The server model ID is derivable from the last
+  path segment of the server URL property.
+- **Base Snapshot Location**: Snapshots are stored in the plugin's Eclipse state directory (managed
+  by the platform, separate from the workspace). The filename is derived from the model ID. Writes
+  are performed atomically via a temporary file and a file-system rename.

@@ -1,210 +1,153 @@
-# SR-4: Conflict Resolution
+# SR-3: Conflict Management
 
 ## Scenarios
 
-### SR-4.1: Automatic Merge
+### SR-3.1: Analyze and Detect Model Conflicts
 
-The system automatically integrates concurrent, non-overlapping changes from both the local model
-and the remote repository without user intervention.
-
-#### Functional Requirements
-
-- [FR-4.1](../functional-requirements.md#fr-4-conflict-resolution): Automatically merge concurrent,
-  non-overlapping changes based on model object identity.
-
-#### User Story
-
-As a user, I want the system to automatically merge changes that do not conflict so that I only need
-to intervene when there is a genuine ambiguity.
-
-#### Preconditions
-
-- A pull operation has been initiated on a tracked model.
-- Both the local model and the remote repository have changes since the last sync baseline.
-
-#### Steps
-
-1. The system computes the diff between the local model, the remote model, and the sync baseline.
-   - Local-only changes (objects added, modified, or deleted locally but not remotely) are
-     identified.
-   - Remote-only changes (objects added, modified, or deleted remotely but not locally) are
-     identified.
-   - Overlapping changes (the same object modified in both local and remote) are identified as
-     conflicts.
-2. The system applies all non-overlapping changes automatically.
-   - Local-only changes are retained in the merged result.
-   - Remote-only changes are integrated into the local model.
-3. The pull operation completes without user intervention if no conflicts are present.
-   - The sync baseline is updated to the merged state.
-   - The synchronization status updates to "Up to date".
-
-#### Edge Cases
-
-- **No Changes on Either Side**: If neither side has changes since the baseline, the merge is a
-  no-op and the system shows "Already up to date".
-- **All Changes Conflict**: If every changed object has a conflict, the system proceeds to the
-  conflict resolution interface (SR-4.2) without applying any automatic changes.
-
-### SR-4.2: Conflict Detection
-
-The system detects and presents all conflicting modifications to the user before allowing the merge
-to complete.
+The system performs a structural three-way comparison during a Pull operation to identify
+overlapping changes between the local workspace and the remote repository.
 
 #### Functional Requirements
 
-- [FR-4.2](../functional-requirements.md#fr-4-conflict-resolution): Detect and surface conflicting
-  modifications to the same model objects.
+- [FR-3.1](../functional-requirements.md#fr-3-conflict-resolution): Compare local and remote model
+  versions using a three-way merge logic.
+- [FR-3.2](../functional-requirements.md#fr-3-conflict-resolution): Identify conflicting changes
+  that cannot be merged automatically.
 
 #### User Story
 
-As a user, I want to see a clear list of all conflicts so that I can understand what needs to be
-resolved before the merge is finalized.
+As a user, I want the system to detect when my local edits overlap with remote changes so that I can
+prevent data loss during a Pull.
 
 #### Preconditions
 
-- A pull operation has identified at least one conflicting change during the merge computation.
+- A Pull operation has been initiated.
+- Both local and remote modifications exist relative to the common ancestor version.
 
 #### Steps
 
-1. The system pauses the merge and opens the conflict resolution interface.
-   - A list of all conflicting model objects is displayed, grouped by object type (element,
-     relationship, property).
-   - Each entry shows the object identifier and the nature of the conflict (e.g., both sides
-     modified the same property, one side deleted while the other modified).
-2. Select a conflict entry from the list.
-   - The diff view for that object is shown (see SR-4.3).
-3. Observe the overall resolution progress.
-   - The conflict list indicates which conflicts have been resolved and which remain pending.
-   - The "Complete Merge" action is disabled until all conflicts are resolved.
+1. Initiate a Pull operation.
+   - A progress dialog appears while the system compares the base snapshot, the local model, and the
+     downloaded remote content.
+2. Observe the outcome of the conflict analysis.
+   - If all changes are non-overlapping or identical on both sides: the Pull completes automatically
+     without further user interaction.
+   - If conflicting changes are detected: the Conflict Resolution Dialog opens automatically.
 
 #### Edge Cases
 
-- **Large Conflict Set**: If the number of conflicts exceeds a defined threshold, the system
-  displays a warning about the volume of conflicts and offers a "Select all: keep local" or "Select
-  all: keep remote" shortcut.
+- **No Conflicts**: If all changes are non-overlapping or identical, the system completes the Pull
+  automatically without opening any dialog.
+- **No Common Ancestor**: If no base snapshot exists for the model, the merge cannot be performed
+  safely. The system must abort the Pull and inform the user.
 
-### SR-4.3: Diff View
+### SR-3.2: Resolve Conflicts in Pull Dialog
 
-The system displays a side-by-side comparison of local and remote versions of a conflicting object.
+The system provides a dialog where all detected conflicts are displayed in a hierarchical tree with
+side-by-side columns, allowing the user to choose which version to keep for each conflict.
 
 #### Functional Requirements
 
-- [FR-4.3](../functional-requirements.md#fr-4-conflict-resolution): Provide a diff view comparing
-  local and remote versions of conflicting objects.
+- [FR-3.3](../functional-requirements.md#fr-3-conflict-resolution): Provide a visual interface to
+  review conflicting object properties.
+- [FR-3.4](../functional-requirements.md#fr-3-conflict-resolution): Resolve conflicts by manually
+  selecting the local or remote version of an object.
 
 #### User Story
 
-As a user, I want to see exactly what changed on each side for a conflicting object so that I can
-make an informed resolution decision.
+As a user, I want to see all conflicting changes in a single dialog so that I can quickly decide
+which versions to keep and finish the Pull operation.
 
 #### Preconditions
 
-- The conflict resolution interface is open and at least one conflict entry is selected.
+- A Pull operation is in progress and real conflicts have been detected.
 
 #### Steps
 
-1. Select a conflicting object in the conflict list.
-   - The diff view displays two panels side-by-side: the local version on the left and the remote
-     version on the right.
-   - Changed fields or properties are visually highlighted.
-   - The sync baseline version is available as an optional reference view.
-2. Navigate between conflicting objects using the conflict list or navigation controls within the
-   diff view.
-   - The diff view updates to show the selected object's versions.
+1. Review the Conflict Resolution Dialog that opens automatically.
+   - The dialog shows a hierarchical tree of conflicting model elements alongside local and remote
+     changes for each item.
+   - Elements with unresolved conflicts are highlighted in red in the model structure column.
+2. Click the preferred side (local or remote column cell) for each conflicting item.
+   - The chosen side is marked with a checkmark (✔) in the selected cell.
+   - Alternatively, click "Accept All Local" or "Accept All Remote" to resolve all remaining
+     conflicts at once.
+   - Once all conflicts are resolved, the Apply button becomes enabled.
+3. Click "Apply" to finalize the Pull.
+   - The dialog closes and the model is updated with the merged result.
 
 #### Edge Cases
 
-- **Deleted Object**: If one side has deleted the object while the other has modified it, the diff
-  view shows the modified version against an empty "deleted" state on the opposite side.
-- **Binary or Unsupported Properties**: Properties that cannot be meaningfully diffed (e.g., large
-  embedded resources) are displayed as "Modified" without a detailed diff, and the user is prompted
-  to choose local or remote.
-
-### SR-4.4: Manual Conflict Resolution
-
-The system allows the user to resolve each conflict by selecting either the local or remote version
-of the affected object.
-
-#### Functional Requirements
-
-- [FR-4.4](../functional-requirements.md#fr-4-conflict-resolution): Allow the user to resolve each
-  conflict by accepting the local or remote version.
-
-#### User Story
-
-As a user, I want to choose which version to keep for each conflicting object so that the final
-merged model reflects deliberate decisions.
-
-#### Preconditions
-
-- The conflict resolution interface is open and at least one conflict is unresolved.
-
-#### Steps
-
-1. Select a conflicting object and review the diff view.
-2. Choose to accept the local version or the remote version for the selected object.
-   - The conflict entry is marked as resolved with the chosen side indicated.
-   - The diff view advances to the next unresolved conflict automatically (if any).
-3. Repeat for all remaining conflicts.
-   - Once all conflicts are resolved, the "Complete Merge" action becomes available.
-4. Confirm the merge completion.
-   - The system applies all resolutions: non-overlapping automatic changes and manual resolution
-     choices are combined into the final merged model.
-   - The sync baseline is updated to the merged state.
-   - The conflict resolution interface closes.
-   - The synchronization status updates to "Up to date".
-
-#### Edge Cases
-
-- **Change Resolution**: The user may change a previously made resolution before completing the
-  merge. The new choice replaces the old one.
-- **Abandon Merge**: The user may cancel the conflict resolution at any point. All pending
-  resolutions are discarded, and the local model is restored to its pre-pull state.
-- **Session Expiry During Resolution**: If the session expires while the conflict resolution
-  interface is open, the system saves the resolution progress locally. Upon re-authentication, the
-  user can resume from where they left off.
+- **Cancellation**: If the user closes the dialog without clicking "Apply", the Pull is aborted and
+  the local model remains in its pre-Pull state.
+- **Bulk Selection**: "Accept All Local" and "Accept All Remote" update all unresolved conflicts
+  simultaneously and enable the Apply button.
 
 ## Business Rules
 
-- **Conflict Definition**: A conflict exists when the same model object (identified by its unique
-  ID) has been modified in both the local model and the remote repository since the last sync
-  baseline.
-- **Deletion Conflict**: If one side deletes an object and the other side modifies it, this is
-  treated as a conflict requiring manual resolution.
-- **Simultaneous Addition**: If both sides add a new object with the same identifier, this is
-  treated as a conflict.
-- **Non-Overlapping Changes Are Safe**: Changes to different objects are never in conflict and are
-  always merged automatically.
-- **Merge Completeness**: The merge is finalized only when every detected conflict has a resolution.
-  Partial merges are not applied to the local model.
-- **Baseline Update**: The sync baseline is updated to the merged result only after the merge is
-  fully completed and applied to the local model.
-- **Resolution Scope**: The user may only choose between the local version and the remote version of
-  a conflicting object. Custom property-level editing is not part of conflict resolution.
+- **Three-Way Comparison**: Conflict detection compares three versions of the model — the base
+  snapshot (state at the last successful sync), the local working copy, and the downloaded remote
+  content. The comparison operates at the model element level using each element's unique
+  identifier.
+- **Change Classification**: Each identified difference is classified as a local-only change, a
+  remote-only change, or a conflict. Non-overlapping changes and identical changes on both sides are
+  merged automatically. Only changes where the same property was modified differently on both sides
+  are presented to the user as conflicts.
+- **Mandatory Selection**: The "Apply" action remains disabled until a resolution choice (Local or
+  Remote) has been made for every identified conflict in the dialog.
+- **Scope of Resolution**: Conflicts are defined at the property level (e.g., Name, Documentation,
+  Coordinates) of individual model objects.
+- **Atomicity**: The Pull is only completed if the merge is finalized. If the process is interrupted
+  or cancelled, the local model remains unchanged.
 
-## UI/UX Functional Details
+## UI/UX
 
-- **Feedback**: A progress indicator is shown when computing diffs or applying the final merge for
-  operations exceeding 200ms.
-- **Conflict Counter**: The conflict resolution interface displays a counter showing the number of
-  resolved conflicts versus the total (e.g., "3 of 7 resolved").
-- **Visual Highlighting**: The diff view uses color coding to distinguish additions (green),
-  deletions (red), and unchanged content (neutral).
-- **Keyboard Navigation**: The conflict list and resolution actions support keyboard navigation
-  (Arrows to move between conflicts, keyboard shortcuts to accept local or remote).
-- **Abandon Confirmation**: Cancelling an in-progress conflict resolution requires explicit
-  confirmation to avoid accidental loss of resolution work.
+### Dialog Layout
+
+The Conflict Resolution Dialog has three columns:
+
+| Column          | Content                                                |
+| --------------- | ------------------------------------------------------ |
+| Model Structure | Hierarchical tree of model elements that have changes. |
+| Local Change    | The value or diff from the user's local working copy.  |
+| Remote Change   | The value or diff from the server version.             |
+
+By default, the tree shows only elements that have at least one conflict in their subtree. A **"Show
+all changes"** checkbox reveals all changed elements, including non-conflicting ones.
+
+### Change Representation
+
+Changes are displayed in the Local and Remote columns as human-readable descriptions:
+
+- **Attribute change**: shown as `attributeName: oldValue → newValue`.
+- **Reference added**: shown as `+ elementName`.
+- **Reference removed**: shown as `- elementName`.
+- **Reference moved**: shown as `⇆ elementName`.
+- **Element added or deleted** (structural containment): shown as "Added" or "Deleted" in the
+  structure column rather than as a property diff.
+
+### Resolution Interaction
+
+- Clicking a cell in the Local Change column selects the local version for that conflict.
+- Clicking a cell in the Remote Change column selects the remote version.
+- The chosen side is indicated by a checkmark (✔) prefix in the cell text.
+- Ctrl+Click on a selected cell deselects the resolution, returning the conflict to an unresolved
+  state.
+- Elements with unresolved conflicts are shown in red in the Model Structure column.
+- Two bulk action buttons — "Accept All Local" and "Accept All Remote" — resolve all remaining
+  conflicts at once.
+- The Apply button remains disabled as long as any conflict is unresolved.
 
 ## Technical Notes
 
-- **Three-Way Merge**: The merge algorithm uses three inputs: the sync baseline (common ancestor),
-  the local model, and the remote model. Diffs are computed against the baseline, not directly
-  between local and remote.
-- **Object Identity**: Model objects are identified by their immutable unique ID (UUID) as defined
-  by the ArchiMate Exchange Format. Name or position changes do not affect identity.
-- **Resolution Persistence**: In-progress conflict resolutions are stored in the plugin's workspace
-  metadata so that they survive an IDE restart or session expiry without losing progress.
-- **Merge Application**: The final merge is applied as a single atomic operation to the local model.
-  If the application fails, the local model is rolled back to its pre-pull state.
-- **Concurrency**: Conflict resolution is a single-user, sequential process per model. Concurrent
-  resolution sessions on the same model are not supported.
+- **Comparison Engine**: The three-way comparison uses the Eclipse EMF Compare framework. The
+  comparison scope is: left = local working copy, right = remote content, origin = base snapshot.
+- **Conflict Kind**: Only structural conflicts ("real conflicts" in EMF Compare terminology — where
+  both sides changed the same feature of the same object differently) are surfaced in the dialog.
+  Pseudo-conflicts (identical changes on both sides) are resolved automatically.
+- **Common Ancestor Identification**: The base snapshot stored in the plugin’s state directory is
+  loaded as the "origin" reference. Its path is derived from the model ID in the tracking property.
+- **Transactional Application**: All integrated changes and resolved conflicts are applied to the
+  live Archi model as a single batch operation to maintain structural consistency.
+- **Non-Conflicting Changes**: Remote non-conflicting changes are applied automatically regardless
+  of whether the user opens the dialog. The dialog handles only the conflicting portion.
