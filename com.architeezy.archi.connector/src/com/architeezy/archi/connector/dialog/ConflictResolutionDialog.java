@@ -13,22 +13,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.eclipse.emf.common.util.BasicMonitor;
-import org.eclipse.emf.compare.AttributeChange;
 import org.eclipse.emf.compare.Comparison;
 import org.eclipse.emf.compare.ConflictKind;
 import org.eclipse.emf.compare.Diff;
-import org.eclipse.emf.compare.DifferenceKind;
 import org.eclipse.emf.compare.DifferenceSource;
 import org.eclipse.emf.compare.DifferenceState;
 import org.eclipse.emf.compare.Match;
-import org.eclipse.emf.compare.ReferenceChange;
-import org.eclipse.emf.compare.ResourceAttachmentChange;
 import org.eclipse.emf.compare.merge.BatchMerger;
 import org.eclipse.emf.compare.merge.IMerger;
-import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.dialogs.IDialogConstants;
@@ -55,7 +49,6 @@ import org.eclipse.swt.widgets.Tree;
 
 import com.archimatetool.editor.ui.ArchiLabelProvider;
 import com.archimatetool.model.IArchimateModel;
-import com.archimatetool.model.IProperty;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.io.ModelSerializer;
 
@@ -72,6 +65,7 @@ import com.architeezy.archi.connector.io.ModelSerializer;
  * Non-conflicting remote diffs are applied automatically on OK; conflicting
  * diffs are applied according to the user's per-row choice.
  */
+@SuppressWarnings("checkstyle:ClassDataAbstractionCoupling")
 public class ConflictResolutionDialog extends Dialog {
 
     /** Resolution choice for a single conflicting tree node. */
@@ -82,8 +76,6 @@ public class ConflictResolutionDialog extends Dialog {
         /** Accept the remote version of the conflicting element. */
         REMOTE
     }
-
-    private static final String COLON = ": ";
 
     private static final String CHECKMARK = "\u2714 ";
 
@@ -335,20 +327,8 @@ public class ConflictResolutionDialog extends Dialog {
             }
         }
 
-        return new ConflictTreeNode(element, extractLabel(element), localDiffs, remoteDiffs, children,
+        return new ConflictTreeNode(element, DiffFormatter.extractLabel(element), localDiffs, remoteDiffs, children,
                 addedLocal, addedRemote, deletedLocal, deletedRemote);
-    }
-
-    private static String extractLabel(EObject element) {
-        if (element == null) {
-            return "?";
-        }
-        if (element instanceof IProperty property) {
-            var key = property.getKey();
-            return "Property" + (key != null && !key.isBlank() ? " " + key : "");
-        }
-        var label = ArchiLabelProvider.INSTANCE.getLabel(element);
-        return label != null && !label.isBlank() ? label : element.eClass().getName();
     }
 
     private static List<ConflictTreeNode> collectConflictNodes(List<ConflictTreeNode> nodes) {
@@ -360,61 +340,6 @@ public class ConflictResolutionDialog extends Dialog {
             result.addAll(collectConflictNodes(node.children()));
         }
         return result;
-    }
-
-    // -------------------------------------------------------------------------
-    // Diff formatting
-    // -------------------------------------------------------------------------
-
-    static String formatDiffs(List<Diff> diffs) {
-        return diffs.stream()
-                .map(ConflictResolutionDialog::formatDiff)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.joining(", "));
-    }
-
-    private static String formatDiff(Diff diff) {
-        // Containment ADD/DELETE and resource attachment ADD/DELETE are shown on the child node itself
-        if (diff instanceof ReferenceChange rc
-                && rc.getReference().isContainment()
-                && (rc.getKind() == DifferenceKind.ADD || rc.getKind() == DifferenceKind.DELETE)) {
-            return "";
-        }
-        if (diff instanceof ResourceAttachmentChange
-                && (diff.getKind() == DifferenceKind.ADD || diff.getKind() == DifferenceKind.DELETE)) {
-            return "";
-        }
-        if (diff instanceof AttributeChange ac) {
-            return formatAttributeChange(ac);
-        }
-        if (diff instanceof ReferenceChange rc) {
-            return formatReferenceChange(rc);
-        }
-        return diff.getKind().getName();
-    }
-
-    private static String formatAttributeChange(AttributeChange ac) {
-        var attrName = ac.getAttribute().getName();
-        var newValue = ac.getValue();
-        var newStr = newValue != null ? newValue.toString() : "(null)";
-        var origin = ac.getMatch().getOrigin();
-        if (origin != null) {
-            var oldValue = origin.eGet(ac.getAttribute());
-            if (oldValue != null && !oldValue.toString().equals(newStr)) {
-                return attrName + COLON + oldValue + " \u2192 " + newStr;
-            }
-        }
-        return attrName + COLON + newStr;
-    }
-
-    private static String formatReferenceChange(ReferenceChange rc) {
-        var name = extractLabel(rc.getValue());
-        return switch (rc.getKind()) {
-        case ADD -> "+ " + name;
-        case DELETE -> "- " + name;
-        case MOVE -> "\u21c6 " + name;
-        default -> rc.getReference().getName() + COLON + name;
-        };
     }
 
     // -------------------------------------------------------------------------
@@ -523,7 +448,7 @@ public class ConflictResolutionDialog extends Dialog {
             // When the object itself is added/deleted, other diffs on the same side
             // (e.g. reference assignments) are part of the structural operation and
             // should not be listed separately.
-            var content = structural.isEmpty() ? formatDiffs(diffs) : structural;
+            var content = structural.isEmpty() ? DiffFormatter.formatDiffs(diffs) : structural;
 
             if (content.isEmpty()) {
                 return "";

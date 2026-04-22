@@ -14,6 +14,7 @@ import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
 import com.architeezy.archi.connector.navigator.ModelTreeDecorator;
+import com.architeezy.archi.connector.service.LocalChangeService;
 import com.architeezy.archi.connector.service.UpdateCheckService;
 
 /**
@@ -44,12 +45,14 @@ public class ConnectorPlugin extends AbstractUIPlugin {
     public void start(BundleContext context) throws Exception {
         super.start(context);
         UpdateCheckService.INSTANCE.start();
+        LocalChangeService.INSTANCE.start();
     }
 
     @Override
     public void stop(BundleContext context) throws Exception {
         ModelTreeDecorator.INSTANCE.uninstall();
         UpdateCheckService.INSTANCE.stop();
+        LocalChangeService.INSTANCE.stop();
         super.stop(context);
     }
 

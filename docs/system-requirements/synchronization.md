@@ -10,86 +10,52 @@ newer than the local version.
 #### Functional Requirements
 
 - [FR-2.1](../functional-requirements.md#fr-2-model-synchronization): Monitor the server for model
-  updates and notify the user of available changes.
-
-#### User Story
-
-As a user, I want to be notified when remote changes are available so that I can pull them before my
-local copy becomes too outdated.
-
-#### Preconditions
-
-- A tracked model is open in the workspace.
-- A connection profile is active and authenticated.
+  updates and notify the user.
 
 #### Steps
 
-1. Keep the model open in Archi while connected to the server.
-   - The system periodically checks the server version in the background without user interaction.
+1. Keep a tracked model open in the Archi workspace while connected.
+   - Background version checks are performed periodically.
 2. Observe the update indicator in the model tree.
-   - If a newer version is available on the server, a down-arrow icon (↓) appears next to the model
-     name in the Archi model tree.
-   - Hovering over the model name shows a tooltip with the server version date and the date of the
-     last local pull.
-
-The update indicator remains visible until the user performs a Pull. It disappears if the server
-version is no longer newer than the local tracking timestamp (e.g., after a successful pull by
-another process).
+   - A down-arrow icon (↓) appears next to the model name if a newer version exists on the server.
+3. Hover over the model name in the tree.
+   - A tooltip displays the server version date and the date of the last local sync.
 
 #### Edge Cases
 
-- **Offline State**: If the server is unreachable, the system silently skips the check for that
-  cycle and retries at the next interval. No error is shown to the user.
-- **Session Expired**: If the access token cannot be refreshed, the system skips the check silently.
-  The user will encounter the authentication error the next time they initiate an explicit
+- **Offline State**: Background checks are skipped silently; no error is shown to the user.
+- **Session Expired**: Version checks are skipped until the user re-authenticates during an explicit
   operation.
 
 ### SR-2.2: Pull Modifications
 
-The system retrieves remote changes and integrates them into the local model to ensure it reflects
-the latest server state.
+The system retrieves remote changes and integrates them into the local model.
 
 #### Functional Requirements
 
 - [FR-2.2](../functional-requirements.md#fr-2-model-synchronization): Pull remote modifications and
-  integrate them into the local model.
-
-#### User Story
-
-As a user, I want to pull changes made by others so that my local model reflects the latest team
-progress.
-
-#### Preconditions
-
-- The model is tracked and a newer version exists on the server.
-- The session is authenticated.
+  integrate them.
 
 #### Steps
 
 1. Initiate the Pull operation from the toolbar.
-   - A progress dialog appears while the system downloads the latest model content from the server.
-2. Observe the outcome once the operation completes.
-   - If only the remote version has changed: the model is updated in-place. Open diagram editors and
-     undo history are preserved.
-   - If only local changes exist: an informational dialog appears, stating that no remote changes
-     are available and that local changes can be pushed when ready.
-   - If both the local model and the remote version have changed: non-conflicting changes are
-     applied automatically. If conflicts are detected, the Conflict Resolution Dialog opens.
-3. Verify that the update has been applied.
-   - The update indicator (↓) disappears from the model name in the model tree.
-
-#### Non-Destructive Pull
-
-The pull operation updates the live Archi model in-place rather than closing and reopening the file.
-This preserves the user's open diagram tabs and undo history. The operation is performed as a single
-batch update to maintain model consistency.
+   - Progress dialog appears and the latest model content is downloaded.
+2. Review the result of the automatic integration.
+   - If only the remote changed: the model is updated in-place; diagram editors and undo history are
+     preserved.
+   - If both local and remote changed: non-conflicting changes are applied; the Conflict Resolution
+     Dialog opens if overlaps are detected.
+   - If only local changes exist: an informational dialog confirms that no remote changes are
+     available.
+3. Verify the model state in the tree.
+   - Update indicator (↓) disappears.
 
 #### Edge Cases
 
-- **Unsaved Changes**: If the local model has unsaved modifications, the system prompts the user
-  before proceeding. Proceeding will discard the unsaved changes.
-- **Integrity Error**: If the downloaded data cannot be parsed, the system aborts the operation and
-  leaves the local model unchanged.
+- **Unsaved Changes**: A confirmation prompt appears; proceeding discards unsaved local
+  modifications.
+- **Integrity Error**: Operation is aborted if downloaded data is corrupted; the local model remains
+  unchanged.
 
 ### SR-2.3: Push Modifications
 
@@ -100,87 +66,71 @@ The system uploads local changes to the remote repository, replacing the current
 - [FR-2.3](../functional-requirements.md#fr-2-model-synchronization): Push local modifications to
   the remote repository.
 
-#### User Story
-
-As a user, I want to push my local modifications to the server so that they are shared with other
-team members.
-
-#### Preconditions
-
-- The model is tracked and has local changes.
-- The local base version matches the current server version (no updates have been made on the server
-  since the last sync).
-
 #### Steps
 
-1. Initiate the Push operation from the synchronization toolbar.
-   - A progress dialog appears while the system verifies the server version and uploads the model
-     content.
-2. Confirm the push completed successfully.
-   - The progress dialog closes without an error message.
+1. Initiate the Push operation from the toolbar.
+   - Progress dialog appears while the system verifies versions and uploads content.
+2. Confirm the operation completion.
+   - Progress dialog closes and the local model is marked as in-sync with the server.
 
 #### Edge Cases
 
-- **Version Mismatch**: If the server has a newer version (someone else pushed in the meantime), the
-  system blocks the Push and requires the user to Pull first.
-- **Network Failure**: If the upload is interrupted, the server is not updated and the local model
-  remains in its original state. The user can retry the Push.
+- **Version Mismatch**: Push is blocked if the server has a newer version; the user is prompted to
+  Pull first.
+- **Network Failure**: Upload is aborted; the server version remains unchanged and the user can
+  retry.
 
 ## Business Rules
 
-### Sync Scenario Classification
+### Synchronization and Merging
 
-Before performing any merge operation during a Pull, the system classifies the state of the model
-into one of four scenarios by comparing the serialized local model, the stored base snapshot, and
-the downloaded remote content:
+- **Sync Scenario Classification**: Before any Pull, the state is classified by comparing the local
+  model, the base snapshot, and the remote content:
+  - **Up to Date**: No changes; indicator is cleared.
+  - **Simple Pull**: Only remote changed; content is applied directly.
+  - **Simple Push**: Only local changed; no pull action is taken.
+  - **Diverged**: Both changed; a 3-way merge is initiated.
+- **Merge Priority**: Automatic merging applies only to non-overlapping changes. Overlapping changes
+  (conflicts) must be resolved manually by the user.
+- **Push Pre-condition**: A Push is only permitted if the local model is based on the latest server
+  version (no "pending updates").
+- **Non-Destructive Integration**: Pull operations update the live model in-place to preserve open
+  diagram tabs and the undo history.
 
-| Scenario    | Local vs. Base | Remote vs. Base | System Action                                          |
-| ----------- | -------------- | --------------- | ------------------------------------------------------ |
-| Up to Date  | Unchanged      | Unchanged       | Clear the update indicator; no further action.         |
-| Simple Pull | Unchanged      | Changed         | Apply remote content directly to the local model.      |
-| Simple Push | Changed        | Unchanged       | Inform the user that remote is unchanged; no pull.     |
-| Diverged    | Changed        | Changed         | Perform a 3-way merge; open conflict dialog if needed. |
+### Data Integrity
 
-This classification ensures that a Pull never silently overwrites local work.
+- **Atomic Metadata Update**: The base snapshot, server URL, and last modification timestamp must be
+  updated as a single atomic operation after every successful sync.
+- **Snapshot Consistency**: The base snapshot must always reflect the exact state of the model as it
+  exists on the server at the time of the last sync.
+- **Tracking Persistence**: Synchronization metadata is stored inside the `.archimate` file. The
+  tracking survives file moves, renaming, or application restarts.
 
-### Rules
+### Monitoring and UI
 
-- **Pull Requirement**: A Push operation is only allowed if the user's local model is based on the
-  latest version available on the server.
-- **Tracking Persistence**: The relationship between a local model and its remote counterpart
-  persists across application sessions. The tracking data is stored in the model file itself and
-  survives file copies and moves.
-- **Merge Priority**: Automatic merging is only applied to non-overlapping changes; overlapping
-  changes must be resolved by the user.
-- **Snapshot Integrity**: The base snapshot must always be updated atomically alongside the tracking
-  metadata after each successful sync. The two must remain consistent.
-- **Background Check Scope**: The background update check covers all tracked models that are
-  currently open in the workspace. Closed models are not checked.
+- **Background Check Scope**: Only models currently open in the Archi workspace are monitored for
+  updates.
+- **Check Interval**: Version checks occur every 5 minutes by default (configurable in preferences).
+- **Indicator Persistence**: The update indicator (↓) remains visible until a successful Pull is
+  completed or the server version is no longer newer.
+- **Action Availability**: The Pull and Push buttons are enabled or disabled based on the current
+  sync state and authentication status.
 
 ## UI/UX
 
-- **Status Indicator**: A down-arrow icon (↓) appended to the model name in the Archi model tree
-  indicates that a newer version is available on the server. No icon means the model is in sync or
-  untracked.
-- **Tooltip**: Hovering over a model with the update indicator shows a tooltip with the server
-  version date and the locally tracked date.
-- **Pull Toolbar Button**: The Pull button in the main toolbar is enabled only when the active model
-  has a pending update. It is automatically re-evaluated when the update state changes.
-- **Operation Feedback**: A progress dialog with a "Cancel" option is shown for Pull and Push
-  operations. Both run on a background thread to avoid blocking the UI.
-- **Notification Persistence**: The update indicator remains visible until the user performs a
-  successful Pull.
+- **Visual Cues**: The down-arrow (↓) icon is the primary indicator for pending remote changes.
+- **Tooltips**: Detailed sync information (dates/versions) is provided via tooltips on the model
+  tree items.
+- **Feedback**: Progress bars and "Cancel" buttons are required for all Pull and Push operations to
+  prevent UI freezing.
 
 ## Technical Notes
 
-- **Sync Scenario Detection**: The system serializes the live local model to bytes and compares
-  against the stored base snapshot and downloaded remote bytes using a binary equality check. This
-  approach is simple and reliable but is sensitive to any change that affects the XMI serialization,
-  including purely structural reorderings.
-- **3-Way Merge Engine**: The system uses the Eclipse EMF Compare framework with a three-scope
-  comparison (local, remote, origin/base) to compute structural diffs at the model element level.
-- **Metadata Storage**: Synchronization metadata is stored as named properties in the `.archimate`
-  model file, not in a separate database or hidden file. The server model ID is the last path
-  segment of the server URL property.
-- **Background Check Interval**: The default background check interval is 5 minutes. This is
-  configurable in the plugin preferences.
+- **Change Detection**: The system uses binary equality checks between the live model, the snapshot,
+  and the remote data to classify sync scenarios.
+- **Merge Engine**: Structural diffs and 3-way merges are handled by the Eclipse EMF Compare
+  framework.
+- **Metadata Storage**: All tracking properties are stored as standard Archi named properties. The
+  server model ID is derived from the server URL property.
+- **Atomic Writes**: Snapshots are saved to the plugin's state directory using a temporary file and
+  rename strategy to prevent data loss.

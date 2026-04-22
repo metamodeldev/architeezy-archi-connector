@@ -29,6 +29,7 @@ import com.archimatetool.editor.views.tree.ITreeModelView;
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.model.ConnectorProperties;
+import com.architeezy.archi.connector.service.LocalChangeService;
 import com.architeezy.archi.connector.service.UpdateCheckService;
 
 /**
@@ -64,6 +65,7 @@ public final class ModelTreeDecorator {
      */
     public void install() {
         UpdateCheckService.INSTANCE.addListener(updateListener);
+        LocalChangeService.INSTANCE.addListener(updateListener);
         tryInstallViewer();
     }
 
@@ -72,6 +74,7 @@ public final class ModelTreeDecorator {
      */
     public void uninstall() {
         UpdateCheckService.INSTANCE.removeListener(updateListener);
+        LocalChangeService.INSTANCE.removeListener(updateListener);
         installedViewer = null;
     }
 
@@ -175,20 +178,40 @@ public final class ModelTreeDecorator {
         @Override
         public void update(ViewerCell cell) {
             delegate.update(cell);
-            if (cell.getElement() instanceof IArchimateModel model
-                    && ConnectorProperties.isTracked(model)
-                    && UpdateCheckService.INSTANCE.hasUpdate(model)) {
-                cell.setText(cell.getText() + " \u2193"); //$NON-NLS-1$
+            if (cell.getElement() instanceof IArchimateModel model && ConnectorProperties.isTracked(model)) {
+                var text = cell.getText();
+                var hasUpdate = UpdateCheckService.INSTANCE.hasUpdate(model);
+                var hasLocalChanges = LocalChangeService.INSTANCE.hasLocalChanges(model);
+                if (hasUpdate || hasLocalChanges) {
+                    text += " ";
+                    if (hasUpdate) {
+                        text = text + "\u2193"; //$NON-NLS-1$
+                    }
+                    if (hasLocalChanges) {
+                        text = text + "\u2191"; //$NON-NLS-1$
+                    }
+                    cell.setText(text);
+                }
             }
         }
 
         @Override
         public String getToolTipText(Object element) {
             if (element instanceof IArchimateModel model) {
+                var hasLocal = LocalChangeService.INSTANCE.hasLocalChanges(model);
                 var update = UpdateCheckService.INSTANCE.getAvailableUpdate(model);
+                var localDate = ConnectorProperties.getProperty(model,
+                        ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME);
+
+                if (hasLocal && update != null) {
+                    return MessageFormat.format(Messages.Decorator_localAndRemoteTooltip,
+                            formatDate(update.lastModified()), formatDate(localDate));
+                }
+                if (hasLocal) {
+                    return MessageFormat.format(Messages.Decorator_localChangesTooltip,
+                            formatDate(localDate));
+                }
                 if (update != null) {
-                    var localDate = ConnectorProperties.getProperty(model,
-                            ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME);
                     return MessageFormat.format(Messages.Decorator_updateTooltip,
                             formatDate(update.lastModified()), formatDate(localDate));
                 }

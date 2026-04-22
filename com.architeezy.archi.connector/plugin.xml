@@ -28,6 +28,11 @@
             id="com.architeezy.archi.connector.command.pullModel"
             name="%pullModel.label">
         </command>
+        <command
+            categoryId="org.eclipse.ui.category.file"
+            id="com.architeezy.archi.connector.command.pushModel"
+            name="%pushModel.label">
+        </command>
     </extension>
 
     <!-- ============================================================ -->
@@ -45,6 +50,10 @@
         <handler
             class="com.architeezy.archi.connector.handlers.PullFromArchiteezyHandler"
             commandId="com.architeezy.archi.connector.command.pullModel">
+        </handler>
+        <handler
+            class="com.architeezy.archi.connector.handlers.PushToArchiteezyHandler"
+            commandId="com.architeezy.archi.connector.command.pushModel">
         </handler>
     </extension>
 
@@ -89,6 +98,14 @@
                     disabledIcon="platform:/plugin/org.eclipse.ui/icons/full/dtool16/import_wiz.png"
                     label="%pullModel.label"
                     tooltip="%pullModel.tooltip"
+                    style="push">
+                </command>
+                <command
+                    commandId="com.architeezy.archi.connector.command.pushModel"
+                    icon="platform:/plugin/org.eclipse.ui/icons/full/etool16/export_wiz.png"
+                    disabledIcon="platform:/plugin/org.eclipse.ui/icons/full/dtool16/export_wiz.png"
+                    label="%pushModel.label"
+                    tooltip="%pushModel.tooltip"
                     style="push">
                 </command>
             </toolbar>

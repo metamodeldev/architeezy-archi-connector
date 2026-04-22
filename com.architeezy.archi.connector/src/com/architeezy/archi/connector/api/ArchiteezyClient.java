@@ -103,6 +103,9 @@ public class ArchiteezyClient {
             return response.body();
         } catch (ApiException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         }
@@ -136,10 +139,11 @@ public class ArchiteezyClient {
      * @param projectId target project identifier
      * @param fileName file name for the uploaded model
      * @param content raw ArchiMate file bytes
+     * @return metadata of the newly created remote model
      * @throws ApiException on HTTP or I/O error
      */
-    public void exportModel(String serverUrl, String accessToken, String projectId, String fileName, byte[] content)
-            throws ApiException {
+    public RemoteModel exportModel(String serverUrl, String accessToken, String projectId, String fileName,
+            byte[] content) throws ApiException {
         var url = serverUrl + "/api/models"; //$NON-NLS-1$
         var boundary = "----ArchiteezyBoundary" + Long.toHexString(System.currentTimeMillis()); //$NON-NLS-1$
         var body = buildMultipart(boundary, projectId, fileName, content);
@@ -150,16 +154,29 @@ public class ArchiteezyClient {
                     .header(CONTENT_TYPE, "multipart/form-data; boundary=" + boundary) //$NON-NLS-1$
                     .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                     .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.discarding());
+            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
             checkStatus(response.statusCode(), url);
+            var responseBody = response.body();
+            if (responseBody != null && responseBody.contains("\"_links\"")) { //$NON-NLS-1$
+                return parseModel(responseBody);
+            }
+            var location = response.headers().firstValue("Location").orElse(null); //$NON-NLS-1$
+            if (location != null && !location.isBlank()) {
+                return parseModel(get(location, accessToken));
+            }
+            throw new ApiException("Export succeeded but response did not include model metadata", null); //$NON-NLS-1$
         } catch (ApiException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         }
     }
 
-    private static byte[] buildMultipart(String boundary, String projectId, String fileName, byte[] content) {
+    private static byte[] buildMultipart(String boundary, String projectId, String fileName, byte[] content)
+            throws ApiException {
         try {
             var out = new ByteArrayOutputStream();
             var crlf = "\r\n"; //$NON-NLS-1$
@@ -186,7 +203,7 @@ public class ArchiteezyClient {
 
             return out.toByteArray();
         } catch (IOException e) {
-            throw new RuntimeException("Failed to build multipart body", e); //$NON-NLS-1$
+            throw new ApiException("Failed to build multipart body", e); //$NON-NLS-1$
         }
     }
 
@@ -221,31 +238,39 @@ public class ArchiteezyClient {
             return parseModel(response.body());
         } catch (ApiException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         }
     }
 
     /**
-     * Replaces the content of an existing model.
+     * Uploads new ArchiMate content for an existing model using the dedicated
+     * content endpoint.
      *
      * @param accessToken OAuth2 bearer token
-     * @param modelUrl HAL self link URL of the model to update
+     * @param modelUrl HAL self link URL of the model
      * @param content new raw ArchiMate file bytes
      * @throws ApiException on HTTP or I/O error
      */
-    public void updateModelContent(String accessToken, String modelUrl, byte[] content) throws ApiException {
+    public void pushModelContent(String accessToken, String modelUrl, byte[] content) throws ApiException {
+        var url = modelUrl + "/content?format=archimate"; //$NON-NLS-1$
         try {
             var request = HttpRequest.newBuilder()
-                    .uri(URI.create(modelUrl))
+                    .uri(URI.create(url))
                     .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
                     .header(CONTENT_TYPE, "application/octet-stream") //$NON-NLS-1$
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
                     .build();
             var response = http.send(request, HttpResponse.BodyHandlers.discarding());
-            checkStatus(response.statusCode(), modelUrl);
+            checkStatus(response.statusCode(), url);
         } catch (ApiException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         }
@@ -269,6 +294,9 @@ public class ArchiteezyClient {
             checkStatus(response.statusCode(), modelUrl);
         } catch (ApiException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         }
@@ -292,6 +320,9 @@ public class ArchiteezyClient {
             return response.body();
         } catch (ApiException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         }

@@ -166,48 +166,6 @@ public final class RepositoryService {
     }
 
     // -----------------------------------------------------------------------
-    // Publish (create remote record + upload content)
-
-    /**
-     * Creates a new model entry on the server, uploads the current content,
-     * sets {@link ConnectorProperties}, and saves a base snapshot.
-     *
-     * @param profile the connection profile to use
-     * @param model the model to publish
-     * @param name the name for the remote model
-     * @param description the description for the remote model
-     * @param monitor progress monitor for updating the UI
-     * @return the created RemoteModel
-     * @throws Exception if the publish process fails
-     */
-    public RemoteModel publishModel(ConnectionProfile profile, IArchimateModel model, String name, String description,
-            IProgressMonitor monitor) throws Exception {
-        var token = AuthService.INSTANCE.getValidAccessToken(profile);
-
-        if (monitor != null) {
-            monitor.subTask("Creating repository entry"); //$NON-NLS-1$
-        }
-        var remote = client.createModel(profile.getServerUrl(), token, name, description);
-
-        if (monitor != null) {
-            monitor.subTask("Uploading model content"); //$NON-NLS-1$
-        }
-        var uploadContent = ModelSerializer.INSTANCE.serialize(model);
-        client.updateModelContent(token, remote.selfUrl(), uploadContent);
-
-        ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, remote.selfUrl());
-        ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
-                remote.lastModified());
-        IEditorModelManager.INSTANCE.saveModel(model);
-
-        var modelId = ConnectorProperties.extractModelId(remote.selfUrl());
-        // Serialize AFTER connector properties are set so the snapshot matches future local comparisons.
-        SnapshotStore.INSTANCE.saveSnapshot(modelId, ModelSerializer.INSTANCE.serialize(model));
-
-        return remote;
-    }
-
-    // -----------------------------------------------------------------------
     // Export (upload to project)
 
     /**
@@ -230,7 +188,30 @@ public final class RepositoryService {
         if (monitor != null) {
             monitor.subTask("Uploading model"); //$NON-NLS-1$
         }
-        client.exportModel(profile.getServerUrl(), token, projectId, fileName, content);
+        var created = client.exportModel(profile.getServerUrl(), token, projectId, fileName, content);
+
+        if (monitor != null) {
+            monitor.subTask("Updating metadata"); //$NON-NLS-1$
+        }
+        var uiError = new Exception[1];
+        Display.getDefault().syncExec(() -> {
+            try {
+                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, created.selfUrl());
+                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
+                        created.lastModified());
+                IEditorModelManager.INSTANCE.saveModel(model);
+            } catch (Exception e) {
+                uiError[0] = e;
+            }
+        });
+        if (uiError[0] != null) {
+            throw uiError[0];
+        }
+
+        var modelId = ConnectorProperties.extractModelId(created.selfUrl());
+        if (modelId != null) {
+            saveSnapshotAfterConfigure(model, modelId, monitor);
+        }
     }
 
     private static String buildExportFileName(IArchimateModel model) {
@@ -298,19 +279,13 @@ public final class RepositoryService {
             token = AuthService.INSTANCE.getValidAccessToken(profile);
         }
 
-        if (monitor != null) {
-            monitor.subTask("Fetching metadata"); //$NON-NLS-1$
-        }
+        setSubTask(monitor, "Fetching metadata"); //$NON-NLS-1$
         var remote = client.getModel(serverUrl, token, modelId);
 
-        if (monitor != null) {
-            monitor.subTask("Downloading " + remote.name()); //$NON-NLS-1$
-        }
+        setSubTask(monitor, "Downloading " + remote.name()); //$NON-NLS-1$
         final var remoteContent = client.getModelContent(token, remote.contentUrl());
 
-        if (monitor != null) {
-            monitor.subTask("Analyzing changes"); //$NON-NLS-1$
-        }
+        setSubTask(monitor, "Analyzing changes"); //$NON-NLS-1$
         var scenario = detectSyncScenario(model, modelId, remoteContent);
 
         switch (scenario) {
@@ -318,9 +293,7 @@ public final class RepositoryService {
             UpdateCheckService.INSTANCE.clearUpdate(model);
             return false;
         case SIMPLE_PULL:
-            if (monitor != null) {
-                monitor.subTask("Applying remote changes"); //$NON-NLS-1$
-            }
+            setSubTask(monitor, "Applying remote changes"); //$NON-NLS-1$
             applyNonDestructivePull(model, remoteContent, remote, modelId);
             return true;
         case SIMPLE_PUSH:
@@ -331,19 +304,7 @@ public final class RepositoryService {
             UpdateCheckService.INSTANCE.clearUpdate(model);
             return false;
         case DIVERGED:
-            if (monitor != null) {
-                monitor.subTask("Resolving conflicts"); //$NON-NLS-1$
-            }
-            var baseBytes = SnapshotStore.INSTANCE.loadSnapshot(modelId);
-            var mergedBytes = MergeService.INSTANCE.computeMergedContent(model, baseBytes, remoteContent);
-            if (mergedBytes == null) {
-                return false;
-            }
-            if (monitor != null) {
-                monitor.subTask("Applying merged changes"); //$NON-NLS-1$
-            }
-            applyNonDestructivePull(model, mergedBytes, remote, modelId);
-            return true;
+            return applyDivergedPull(model, modelId, remoteContent, remote, monitor);
         default:
             return false;
         }
@@ -427,6 +388,25 @@ public final class RepositoryService {
         UpdateCheckService.INSTANCE.clearUpdate(target);
     }
 
+    private boolean applyDivergedPull(IArchimateModel model, String modelId,
+            byte[] remoteContent, RemoteModel remote, IProgressMonitor monitor) throws Exception {
+        setSubTask(monitor, "Resolving conflicts"); //$NON-NLS-1$
+        var baseBytes = SnapshotStore.INSTANCE.loadSnapshot(modelId);
+        var mergedBytes = MergeService.INSTANCE.computeMergedContent(model, baseBytes, remoteContent);
+        if (mergedBytes == null) {
+            return false;
+        }
+        setSubTask(monitor, "Applying merged changes"); //$NON-NLS-1$
+        applyNonDestructivePull(model, mergedBytes, remote, modelId);
+        return true;
+    }
+
+    private static void setSubTask(IProgressMonitor monitor, String task) {
+        if (monitor != null) {
+            monitor.subTask(task);
+        }
+    }
+
     private static void runImportOnDisplay(IArchimateModel incoming, IArchimateModel target,
             RemoteModel remote, Exception[] uiError) {
         try {
@@ -441,6 +421,107 @@ public final class RepositoryService {
         } catch (Exception e) {
             uiError[0] = e;
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Push (upload local changes to server)
+
+    /**
+     * Uploads the current local model to the Architeezy server.
+     *
+     * <p>
+     * Before uploading, the server is checked for newer remote content. If the
+     * remote has changed, a pull (or 3-way merge for {@link SyncScenario#DIVERGED})
+     * is performed first. The push is aborted if the user cancels the merge dialog.
+     *
+     * @param model the locally open model to push
+     * @param monitor progress monitor
+     * @throws IllegalStateException if the model is not tracked or no profile is
+     *         connected
+     * @throws Exception if the push fails
+     */
+    public void pushModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
+        var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
+        if (modelUrl == null) {
+            throw new IllegalStateException("Model is not tracked by Architeezy"); //$NON-NLS-1$
+        }
+        var serverUrl = ConnectorProperties.extractServerUrl(modelUrl);
+        final var modelId = ConnectorProperties.extractModelId(modelUrl);
+
+        var profile = AuthService.INSTANCE.findProfileForServer(serverUrl);
+        if (profile == null || profile.getStatus() != ProfileStatus.CONNECTED) {
+            throw new IllegalStateException("Not authenticated with server: " + serverUrl); //$NON-NLS-1$
+        }
+        var token = AuthService.INSTANCE.getValidAccessToken(profile);
+
+        // Step 1: Check for remote updates and pull if needed
+        if (monitor != null) {
+            monitor.subTask("Checking for remote updates"); //$NON-NLS-1$
+        }
+        var remote = client.getModel(serverUrl, token, modelId);
+        final var remoteContent = client.getModelContent(token, remote.contentUrl());
+        final var scenario = detectSyncScenario(model, modelId, remoteContent);
+
+        if (scenario == SyncScenario.SIMPLE_PULL || scenario == SyncScenario.DIVERGED) {
+            if (monitor != null) {
+                monitor.subTask("Applying remote changes"); //$NON-NLS-1$
+            }
+            byte[] contentToApply;
+            if (scenario == SyncScenario.DIVERGED) {
+                var baseBytes = SnapshotStore.INSTANCE.loadSnapshot(modelId);
+                contentToApply = MergeService.INSTANCE.computeMergedContent(model, baseBytes, remoteContent);
+                if (contentToApply == null) {
+                    return; // user cancelled merge dialog
+                }
+            } else {
+                contentToApply = remoteContent;
+            }
+            applyNonDestructivePull(model, contentToApply, remote, modelId);
+            // Refresh token after potentially long merge interaction
+            token = AuthService.INSTANCE.getValidAccessToken(profile);
+        }
+
+        uploadAndFinalize(model, token, serverUrl, modelId, modelUrl, monitor);
+    }
+
+    private void uploadAndFinalize(IArchimateModel model, String token, String serverUrl,
+            String modelId, String modelUrl, IProgressMonitor monitor) throws Exception {
+        // Step 2: Upload local content
+        if (monitor != null) {
+            monitor.subTask("Uploading model"); //$NON-NLS-1$
+        }
+        var uploadContent = ModelSerializer.INSTANCE.serialize(model);
+        client.pushModelContent(token, modelUrl, uploadContent);
+
+        // Step 3: Fetch fresh metadata and update connector properties
+        if (monitor != null) {
+            monitor.subTask("Updating metadata"); //$NON-NLS-1$
+        }
+        final var updatedRemote = client.getModel(serverUrl, token, modelId);
+
+        var uiError = new Exception[1];
+        Display.getDefault().syncExec(() -> {
+            try {
+                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
+                        updatedRemote.lastModified());
+                IEditorModelManager.INSTANCE.saveModel(model);
+            } catch (Exception e) {
+                uiError[0] = e;
+            }
+        });
+        if (uiError[0] != null) {
+            throw uiError[0];
+        }
+
+        // Save snapshot after metadata update so future comparisons see local == base
+        try {
+            SnapshotStore.INSTANCE.saveSnapshot(modelId, ModelSerializer.INSTANCE.serialize(model));
+        } catch (Exception e) {
+            ConnectorPlugin.getInstance().getLog().warn("Failed to save snapshot after push", e); //$NON-NLS-1$
+        }
+
+        LocalChangeService.INSTANCE.clearLocalChanges(model);
+        UpdateCheckService.INSTANCE.clearUpdate(model);
     }
 
     // -----------------------------------------------------------------------
