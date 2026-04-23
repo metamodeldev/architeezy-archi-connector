@@ -182,6 +182,15 @@ public final class Messages extends NLS {
 
     public static String ConflictDialog_changeDeleted;
 
+    // OpenInBrowserHandler
+    public static String OpenInBrowserHandler_title;
+
+    public static String OpenInBrowserHandler_jobName;
+
+    public static String OpenInBrowserHandler_failed;
+
+    public static String OpenInBrowserHandler_missingSlugs;
+
     // PullHandler
     public static String PullHandler_title;
 

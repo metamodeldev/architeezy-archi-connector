@@ -81,6 +81,10 @@ final class ResponseParser {
         var description = OAuthManager.extractJsonString(json, "description"); //$NON-NLS-1$
         var author = OAuthManager.extractJsonString(json, "author"); //$NON-NLS-1$
         var lastModified = OAuthManager.extractJsonString(json, "lastModificationDateTime"); //$NON-NLS-1$
+        var slug = OAuthManager.extractJsonString(json, "slug"); //$NON-NLS-1$
+        var projectSlug = OAuthManager.extractJsonString(json, "projectSlug"); //$NON-NLS-1$
+        var projectVersion = OAuthManager.extractJsonString(json, "projectVersion"); //$NON-NLS-1$
+        var scopeSlug = OAuthManager.extractJsonString(json, "scopeSlug"); //$NON-NLS-1$
 
         String selfUrl = null;
         String contentUrl = null;
@@ -109,7 +113,8 @@ final class ResponseParser {
                 }
             }
         }
-        return new RemoteModel(id, name, description, author, lastModified, selfUrl, contentUrl);
+        return new RemoteModel(id, name, description, author, lastModified, selfUrl, contentUrl,
+                slug, projectSlug, projectVersion, scopeSlug);
     }
 
     private static String extractArchiMateHref(String contentArray) {

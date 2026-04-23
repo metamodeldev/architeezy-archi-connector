@@ -25,6 +25,11 @@
         </command>
         <command
             categoryId="org.eclipse.ui.category.file"
+            id="com.architeezy.archi.connector.command.openInBrowser"
+            name="%openInBrowser.label">
+        </command>
+        <command
+            categoryId="org.eclipse.ui.category.file"
             id="com.architeezy.archi.connector.command.pullModel"
             name="%pullModel.label">
         </command>
@@ -46,6 +51,10 @@
         <handler
             class="com.architeezy.archi.connector.ui.handlers.ExportMenuHandler"
             commandId="com.architeezy.archi.connector.command.exportWizard">
+        </handler>
+        <handler
+            class="com.architeezy.archi.connector.ui.handlers.OpenInBrowserHandler"
+            commandId="com.architeezy.archi.connector.command.openInBrowser">
         </handler>
         <handler
             class="com.architeezy.archi.connector.ui.handlers.PullHandler"
@@ -92,6 +101,13 @@
             <toolbar
                 id="com.architeezy.archi.connector.toolbar"
                 label="%toolbar.label">
+                <command
+                    commandId="com.architeezy.archi.connector.command.openInBrowser"
+                    icon="platform:/plugin/org.eclipse.ui.browser/icons/obj16/external_browser.png"
+                    label="%openInBrowser.label"
+                    tooltip="%openInBrowser.tooltip"
+                    style="push">
+                </command>
                 <command
                     commandId="com.architeezy.archi.connector.command.pullModel"
                     icon="platform:/plugin/org.eclipse.ui/icons/full/etool16/import_wiz.png"
