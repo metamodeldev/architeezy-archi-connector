@@ -22,9 +22,6 @@ public final class ConnectorProperties {
     /** Key for the Architeezy model URL property. */
     public static final String KEY_URL = "architeezy:url"; //$NON-NLS-1$
 
-    /** Key for the Architeezy last modification date time property. */
-    public static final String KEY_LAST_MODIFICATION_DATE_TIME = "architeezy:last_modification_date_time"; //$NON-NLS-1$
-
     private ConnectorProperties() {
     }
 

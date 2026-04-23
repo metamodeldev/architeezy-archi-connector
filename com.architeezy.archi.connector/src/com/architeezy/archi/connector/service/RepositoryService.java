@@ -33,6 +33,7 @@ import com.architeezy.archi.connector.auth.ConnectionProfile;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.io.ModelSerializer;
 import com.architeezy.archi.connector.io.SnapshotStore;
+import com.architeezy.archi.connector.io.TrackedModelStore;
 import com.architeezy.archi.connector.model.ConnectorProperties;
 
 /**
@@ -133,8 +134,8 @@ public final class RepositoryService {
             IEditorModelManager.INSTANCE.openModel(model);
             if (authenticated) {
                 ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, remote.selfUrl());
-                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
-                        remote.lastModified());
+                TrackedModelStore.INSTANCE.setLastModified(
+                        ConnectorProperties.extractModelId(remote.selfUrl()), remote.lastModified());
             }
             IEditorModelManager.INSTANCE.saveModel(model);
         } catch (Exception e) {
@@ -197,8 +198,6 @@ public final class RepositoryService {
         Display.getDefault().syncExec(() -> {
             try {
                 ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, created.selfUrl());
-                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
-                        created.lastModified());
                 IEditorModelManager.INSTANCE.saveModel(model);
             } catch (Exception e) {
                 uiError[0] = e;
@@ -210,6 +209,7 @@ public final class RepositoryService {
 
         var modelId = ConnectorProperties.extractModelId(created.selfUrl());
         if (modelId != null) {
+            TrackedModelStore.INSTANCE.setLastModified(modelId, created.lastModified());
             saveSnapshotAfterConfigure(model, modelId, monitor);
         }
     }
@@ -385,6 +385,13 @@ public final class RepositoryService {
             ConnectorPlugin.getInstance().getLog().warn("Failed to save snapshot after pull", e); //$NON-NLS-1$
         }
 
+        // The saveModel inside runImportOnDisplay fires PROPERTY_MODEL_SAVED,
+        // which schedules an async recheck. That recheck can race against the
+        // saveSnapshot above - if it runs first, it compares post-import model
+        // bytes to the stale pre-pull snapshot and marks the URL as having
+        // local changes. Clear the flag (and cancel the pending recheck) so
+        // the push button doesn't light up after a clean pull.
+        LocalChangeService.INSTANCE.clearLocalChanges(target);
         UpdateCheckService.INSTANCE.clearUpdate(target);
     }
 
@@ -415,9 +422,9 @@ public final class RepositoryService {
             importer.setUpdateFolderStructure(true);
             importer.doImport(incoming, target);
             ConnectorProperties.setProperty(target, ConnectorProperties.KEY_URL, remote.selfUrl());
-            ConnectorProperties.setProperty(target,
-                    ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME, remote.lastModified());
             IEditorModelManager.INSTANCE.saveModel(target);
+            TrackedModelStore.INSTANCE.setLastModified(
+                    ConnectorProperties.extractModelId(remote.selfUrl()), remote.lastModified());
         } catch (Exception e) {
             uiError[0] = e;
         }
@@ -486,43 +493,31 @@ public final class RepositoryService {
 
     private void uploadAndFinalize(IArchimateModel model, String token, String serverUrl,
             String modelId, String modelUrl, IProgressMonitor monitor) throws Exception {
-        // Step 2: Upload local content
+        // Step 2: Upload local content. The bytes we upload are exactly what
+        // the server will store and hand back, so reusing them as the snapshot
+        // guarantees snapshot == server content == serialize(model) right
+        // after the push - no follow-up sync check can classify the model as
+        // out of date.
         if (monitor != null) {
             monitor.subTask("Uploading model"); //$NON-NLS-1$
         }
         var uploadContent = ModelSerializer.INSTANCE.serialize(model);
         var putResult = client.pushModelContent(token, modelUrl, uploadContent);
 
-        // Step 3: Update connector properties from the PUT response. Avoid a
-        // follow-up GET so the stored lastModified matches exactly the write
-        // we just made (a separate GET can race against server-side
-        // re-indexing and return a different value, which would make the push
-        // button re-activate because the snapshot captured here wouldn't
-        // match the server's view on the next sync check).
+        // Step 3: Record the server-assigned lastModified in the workspace
+        // store (not in the model), and save the snapshot from the uploaded
+        // bytes. Prefer the PUT response; fall back to GET only if the server
+        // returned no parseable body.
         if (monitor != null) {
             monitor.subTask("Updating metadata"); //$NON-NLS-1$
         }
         final var updatedRemote = putResult != null
                 ? putResult
                 : client.getModel(serverUrl, token, modelId);
+        TrackedModelStore.INSTANCE.setLastModified(modelId, updatedRemote.lastModified());
 
-        var uiError = new Exception[1];
-        Display.getDefault().syncExec(() -> {
-            try {
-                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME,
-                        updatedRemote.lastModified());
-                IEditorModelManager.INSTANCE.saveModel(model);
-            } catch (Exception e) {
-                uiError[0] = e;
-            }
-        });
-        if (uiError[0] != null) {
-            throw uiError[0];
-        }
-
-        // Save snapshot after metadata update so future comparisons see local == base
         try {
-            SnapshotStore.INSTANCE.saveSnapshot(modelId, ModelSerializer.INSTANCE.serialize(model));
+            SnapshotStore.INSTANCE.saveSnapshot(modelId, uploadContent);
         } catch (Exception e) {
             ConnectorPlugin.getInstance().getLog().warn("Failed to save snapshot after push", e); //$NON-NLS-1$
         }

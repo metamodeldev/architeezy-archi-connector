@@ -25,6 +25,7 @@ import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
 import com.architeezy.archi.connector.api.RemoteModel;
 import com.architeezy.archi.connector.auth.ProfileStatus;
+import com.architeezy.archi.connector.io.TrackedModelStore;
 import com.architeezy.archi.connector.model.ConnectorProperties;
 
 /**
@@ -188,8 +189,7 @@ public final class UpdateCheckService {
             var modelId = ConnectorProperties.extractModelId(modelUrl);
             var token = resolveToken(serverUrl);
             var remote = client.getModel(serverUrl, token, modelId);
-            var localDate = ConnectorProperties.getProperty(model,
-                    ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME);
+            var localDate = TrackedModelStore.INSTANCE.getLastModified(modelId);
             if (isNewer(remote.lastModified(), localDate)) {
                 var prev = pendingUpdates.put(modelUrl, remote);
                 return prev == null;

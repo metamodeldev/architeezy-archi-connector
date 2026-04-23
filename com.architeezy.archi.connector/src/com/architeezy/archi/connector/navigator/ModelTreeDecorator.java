@@ -28,6 +28,7 @@ import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.editor.views.tree.ITreeModelView;
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.Messages;
+import com.architeezy.archi.connector.io.TrackedModelStore;
 import com.architeezy.archi.connector.model.ConnectorProperties;
 import com.architeezy.archi.connector.service.LocalChangeService;
 import com.architeezy.archi.connector.service.UpdateCheckService;
@@ -200,8 +201,9 @@ public final class ModelTreeDecorator {
             if (element instanceof IArchimateModel model) {
                 var hasLocal = LocalChangeService.INSTANCE.hasLocalChanges(model);
                 var update = UpdateCheckService.INSTANCE.getAvailableUpdate(model);
-                var localDate = ConnectorProperties.getProperty(model,
-                        ConnectorProperties.KEY_LAST_MODIFICATION_DATE_TIME);
+                var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
+                var localDate = TrackedModelStore.INSTANCE.getLastModified(
+                        ConnectorProperties.extractModelId(modelUrl));
 
                 if (hasLocal && update != null) {
                     return MessageFormat.format(Messages.Decorator_localAndRemoteTooltip,

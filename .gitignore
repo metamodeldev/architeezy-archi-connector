@@ -1,5 +1,6 @@
 /.claude/
 /.metadata/
 /.sonarlint/
+/local/
 bin/
 target/
