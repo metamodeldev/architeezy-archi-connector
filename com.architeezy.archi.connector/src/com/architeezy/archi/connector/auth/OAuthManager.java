@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import com.architeezy.archi.connector.ConnectorPlugin;
 
@@ -55,6 +56,7 @@ public class OAuthManager {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
+    @SuppressWarnings("java:S3077")
     private volatile ServerSocket activeServer;
 
     private volatile boolean loginCancelled;
@@ -81,10 +83,10 @@ public class OAuthManager {
      * @param clientId OAuth2 client identifier
      * @param authEndpoint authorization endpoint URL
      * @param tokenEndpoint token endpoint URL
-     * @return the obtained token response, or {@code null} if the user cancelled
+     * @return the obtained token response, or an empty {@link Optional} if the user cancelled
      * @throws OAuthException if the flow fails or times out
      */
-    public TokenResponse login(String serverUrl, String clientId, String authEndpoint, String tokenEndpoint)
+    public Optional<TokenResponse> login(String serverUrl, String clientId, String authEndpoint, String tokenEndpoint)
             throws OAuthException {
         loginCancelled = false;
 
@@ -112,18 +114,18 @@ public class OAuthManager {
             openBrowser(authUrl);
 
             var code = waitForCode(server, state);
-            return exchangeCode(tokenEndpoint, clientId, code, verifier, redirectUri);
+            return Optional.of(exchangeCode(tokenEndpoint, clientId, code, verifier, redirectUri));
 
         } catch (SocketTimeoutException e) {
             if (loginCancelled) {
-                return null;
+                return Optional.empty();
             }
             throw new OAuthException("Authorization timed out", e); //$NON-NLS-1$
         } catch (OAuthException e) {
             throw e;
         } catch (Exception e) {
             if (loginCancelled) {
-                return null;
+                return Optional.empty();
             }
             throw new OAuthException("OAuth flow failed: " + e.getMessage(), e); //$NON-NLS-1$
         } finally {
@@ -168,6 +170,9 @@ public class OAuthManager {
             return parseTokenResponse(response.body());
         } catch (OAuthException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new OAuthException("Token refresh interrupted", e); //$NON-NLS-1$
         } catch (Exception e) {
             throw new OAuthException("Token refresh failed: " + e.getMessage(), e); //$NON-NLS-1$
         }
@@ -235,6 +240,9 @@ public class OAuthManager {
             return parseTokenResponse(response.body());
         } catch (OAuthException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new OAuthException("Token exchange interrupted", e); //$NON-NLS-1$
         } catch (Exception e) {
             throw new OAuthException("Token exchange failed: " + e.getMessage(), e); //$NON-NLS-1$
         }

@@ -32,6 +32,7 @@ import com.architeezy.archi.connector.ConnectorPlugin;
  * Persisted as a {@link Properties} file under the plugin's state location.
  * Writes are atomic via a tmp+rename.
  */
+@SuppressWarnings("java:S6548")
 public final class TrackedModelStore {
 
     /** The singleton instance. */
@@ -131,7 +132,11 @@ public final class TrackedModelStore {
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            tmp.delete();
+            try {
+                Files.deleteIfExists(tmp.toPath());
+            } catch (IOException ignored) {
+                // best-effort cleanup
+            }
             ConnectorPlugin.getInstance().getLog()
                     .error("Failed to save tracked-models store", e); //$NON-NLS-1$
         }

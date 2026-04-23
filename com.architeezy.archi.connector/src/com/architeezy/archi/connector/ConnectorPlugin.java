@@ -13,9 +13,9 @@ import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
-import com.architeezy.archi.connector.navigator.ModelTreeDecorator;
-import com.architeezy.archi.connector.service.LocalChangeService;
-import com.architeezy.archi.connector.service.UpdateCheckService;
+import com.architeezy.archi.connector.services.LocalChangeService;
+import com.architeezy.archi.connector.services.UpdateCheckService;
+import com.architeezy.archi.connector.ui.navigator.ModelTreeDecorator;
 
 /**
  * OSGi bundle activator for the Architeezy connector plugin.
@@ -29,7 +29,7 @@ public class ConnectorPlugin extends AbstractUIPlugin {
 
     /** Creates the plugin instance. */
     public ConnectorPlugin() {
-        instance = this;
+        // Instance is set in start() to avoid leaking 'this' from the constructor.
     }
 
     /**
@@ -44,6 +44,7 @@ public class ConnectorPlugin extends AbstractUIPlugin {
     @Override
     public void start(BundleContext context) throws Exception {
         super.start(context);
+        setInstance(this);
         UpdateCheckService.INSTANCE.start();
         LocalChangeService.INSTANCE.start();
     }
@@ -53,7 +54,12 @@ public class ConnectorPlugin extends AbstractUIPlugin {
         ModelTreeDecorator.INSTANCE.uninstall();
         UpdateCheckService.INSTANCE.stop();
         LocalChangeService.INSTANCE.stop();
+        setInstance(null);
         super.stop(context);
+    }
+
+    private static void setInstance(ConnectorPlugin plugin) {
+        instance = plugin;
     }
 
     /**

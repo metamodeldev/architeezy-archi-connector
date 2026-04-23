@@ -113,21 +113,21 @@ public final class Messages extends NLS {
 
     public static String ProjectPage_loadError;
 
-    // ImportFromArchiteezyWizard
+    // ImportWizard
     public static String ImportWizard_title;
 
     public static String ImportWizard_importing;
 
     public static String ImportWizard_importFailed;
 
-    // ExportToArchiteezyWizard
+    // ExportWizard
     public static String ExportWizard_title;
 
     public static String ExportWizard_exporting;
 
     public static String ExportWizard_exportFailed;
 
-    // ExportToArchiteezyMenuHandler
+    // ExportMenuHandler
     public static String ExportHandler_title;
 
     public static String ExportHandler_noModel;
@@ -163,7 +163,7 @@ public final class Messages extends NLS {
 
     public static String ConflictDialog_changeDeleted;
 
-    // PullFromArchiteezyHandler
+    // PullHandler
     public static String PullHandler_title;
 
     public static String PullHandler_noModel;
@@ -178,7 +178,7 @@ public final class Messages extends NLS {
 
     public static String PullHandler_remoteUnchanged;
 
-    // PushToArchiteezyHandler
+    // PushHandler
     public static String PushHandler_title;
 
     public static String PushHandler_noModel;

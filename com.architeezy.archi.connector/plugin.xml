@@ -40,19 +40,19 @@
     <!-- ============================================================ -->
     <extension point="org.eclipse.ui.handlers">
         <handler
-            class="com.architeezy.archi.connector.handlers.ImportFromArchiteezyMenuHandler"
+            class="com.architeezy.archi.connector.ui.handlers.ImportMenuHandler"
             commandId="com.architeezy.archi.connector.command.importWizard">
         </handler>
         <handler
-            class="com.architeezy.archi.connector.handlers.ExportToArchiteezyMenuHandler"
+            class="com.architeezy.archi.connector.ui.handlers.ExportMenuHandler"
             commandId="com.architeezy.archi.connector.command.exportWizard">
         </handler>
         <handler
-            class="com.architeezy.archi.connector.handlers.PullFromArchiteezyHandler"
+            class="com.architeezy.archi.connector.ui.handlers.PullHandler"
             commandId="com.architeezy.archi.connector.command.pullModel">
         </handler>
         <handler
-            class="com.architeezy.archi.connector.handlers.PushToArchiteezyHandler"
+            class="com.architeezy.archi.connector.ui.handlers.PushHandler"
             commandId="com.architeezy.archi.connector.command.pushModel">
         </handler>
     </extension>

@@ -25,6 +25,7 @@ import com.archimatetool.model.util.ArchimateResourceFactory;
  *
  * All operations use a temporary file to avoid partial writes.
  */
+@SuppressWarnings("java:S6548")
 public final class ModelSerializer {
 
     /** The singleton instance of ModelSerializer. */
@@ -50,7 +51,7 @@ public final class ModelSerializer {
             resource.save(Collections.emptyMap());
             return Files.readAllBytes(tmp.toPath());
         } finally {
-            tmp.delete();
+            Files.deleteIfExists(tmp.toPath());
         }
     }
 
@@ -87,12 +88,12 @@ public final class ModelSerializer {
         try {
             resource.load(Collections.emptyMap());
         } catch (Exception e) {
-            targetFile.delete();
+            Files.deleteIfExists(targetFile.toPath());
             throw new IOException("Failed to load model from server data: " + e.getMessage(), e); //$NON-NLS-1$
         }
 
         if (resource.getContents().isEmpty()) {
-            targetFile.delete();
+            Files.deleteIfExists(targetFile.toPath());
             throw new IOException("Server returned an empty model"); //$NON-NLS-1$
         }
 

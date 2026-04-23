@@ -23,6 +23,7 @@ import com.architeezy.archi.connector.ConnectorPlugin;
  * Snapshots are used as the "base" in 3-way merges and for rollback on failure.
  * Location: Platform.getStateLocation(bundle)/snapshots/{modelId}.archimate
  */
+@SuppressWarnings("java:S6548")
 public final class SnapshotStore {
 
     /** The singleton instance of SnapshotStore. */
@@ -48,7 +49,7 @@ public final class SnapshotStore {
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         } catch (Exception e) {
-            tmp.delete();
+            Files.deleteIfExists(tmp.toPath());
             throw new IOException("Failed to save snapshot for " + modelId, e); //$NON-NLS-1$
         }
     }
@@ -84,7 +85,12 @@ public final class SnapshotStore {
      * @param modelId the model identifier
      */
     public void deleteSnapshot(String modelId) {
-        snapshotFile(modelId).delete();
+        try {
+            Files.deleteIfExists(snapshotFile(modelId).toPath());
+        } catch (IOException e) {
+            ConnectorPlugin.getInstance().getLog()
+                    .warn("Failed to delete snapshot for " + modelId, e); //$NON-NLS-1$
+        }
     }
 
     /**

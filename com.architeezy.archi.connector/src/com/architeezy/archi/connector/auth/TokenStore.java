@@ -22,6 +22,7 @@ import com.architeezy.archi.connector.ConnectorPlugin;
 /**
  * Persists OAuth tokens in the Eclipse Equinox secure preferences store.
  */
+@SuppressWarnings("java:S6548")
 public final class TokenStore {
 
     /** The singleton instance. */

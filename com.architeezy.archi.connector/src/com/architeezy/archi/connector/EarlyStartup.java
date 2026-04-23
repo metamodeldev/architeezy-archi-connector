@@ -14,7 +14,7 @@ import org.eclipse.ui.IStartup;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.commands.ICommandService;
 
-import com.architeezy.archi.connector.navigator.ModelTreeDecorator;
+import com.architeezy.archi.connector.ui.navigator.ModelTreeDecorator;
 
 /**
  * Called by Eclipse after the workbench is initialized. Installs the model

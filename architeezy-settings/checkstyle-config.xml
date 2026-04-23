@@ -34,7 +34,7 @@
     <property name="fileExtensions" value="java"/>
   </module>
   <module name="FileLength">
-    <property name="max" value="700"/>
+    <property name="max" value="500"/>
     <property name="fileExtensions" value="java" />
   </module>
 
