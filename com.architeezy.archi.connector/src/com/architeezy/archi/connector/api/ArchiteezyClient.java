@@ -253,9 +253,11 @@ public class ArchiteezyClient {
      * @param accessToken OAuth2 bearer token
      * @param modelUrl HAL self link URL of the model
      * @param content new raw ArchiMate file bytes
+     * @return updated model metadata parsed from the PUT response, or
+     *         {@code null} if the server did not return a parseable body
      * @throws ApiException on HTTP or I/O error
      */
-    public void pushModelContent(String accessToken, String modelUrl, byte[] content) throws ApiException {
+    public RemoteModel pushModelContent(String accessToken, String modelUrl, byte[] content) throws ApiException {
         var url = modelUrl + "/content?format=archimate"; //$NON-NLS-1$
         try {
             var request = HttpRequest.newBuilder()
@@ -264,8 +266,13 @@ public class ArchiteezyClient {
                     .header(CONTENT_TYPE, "application/octet-stream") //$NON-NLS-1$
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
                     .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.discarding());
+            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
             checkStatus(response.statusCode(), url);
+            var body = response.body();
+            if (body != null && body.contains("\"lastModificationDateTime\"")) { //$NON-NLS-1$
+                return parseModel(body);
+            }
+            return null;
         } catch (ApiException e) {
             throw e;
         } catch (InterruptedException e) {

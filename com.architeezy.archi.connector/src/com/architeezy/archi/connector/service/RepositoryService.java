@@ -491,13 +491,20 @@ public final class RepositoryService {
             monitor.subTask("Uploading model"); //$NON-NLS-1$
         }
         var uploadContent = ModelSerializer.INSTANCE.serialize(model);
-        client.pushModelContent(token, modelUrl, uploadContent);
+        var putResult = client.pushModelContent(token, modelUrl, uploadContent);
 
-        // Step 3: Fetch fresh metadata and update connector properties
+        // Step 3: Update connector properties from the PUT response. Avoid a
+        // follow-up GET so the stored lastModified matches exactly the write
+        // we just made (a separate GET can race against server-side
+        // re-indexing and return a different value, which would make the push
+        // button re-activate because the snapshot captured here wouldn't
+        // match the server's view on the next sync check).
         if (monitor != null) {
             monitor.subTask("Updating metadata"); //$NON-NLS-1$
         }
-        final var updatedRemote = client.getModel(serverUrl, token, modelId);
+        final var updatedRemote = putResult != null
+                ? putResult
+                : client.getModel(serverUrl, token, modelId);
 
         var uiError = new Exception[1];
         Display.getDefault().syncExec(() -> {

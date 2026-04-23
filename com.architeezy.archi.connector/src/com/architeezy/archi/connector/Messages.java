@@ -170,8 +170,6 @@ public final class Messages extends NLS {
 
     public static String PullHandler_noUpdate;
 
-    public static String PullHandler_dirtyConfirm;
-
     public static String PullHandler_jobName;
 
     public static String PullHandler_success;
@@ -185,13 +183,16 @@ public final class Messages extends NLS {
 
     public static String PushHandler_noModel;
 
-    public static String PushHandler_noChanges;
-
     public static String PushHandler_jobName;
 
     public static String PushHandler_success;
 
     public static String PushHandler_failed;
+
+    // Authentication prompt (shared by Pull/Push handlers)
+    public static String AuthPrompt_noProfile;
+
+    public static String AuthPrompt_signInFailed;
 
     private static final String BUNDLE_NAME = "com.architeezy.archi.connector.messages"; //$NON-NLS-1$
 
