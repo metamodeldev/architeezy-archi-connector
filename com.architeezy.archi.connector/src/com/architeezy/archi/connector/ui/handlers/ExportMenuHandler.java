@@ -15,7 +15,6 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
-import org.eclipse.jface.wizard.WizardDialog;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.ISelectionListener;
 import org.eclipse.ui.IWorkbenchPart;
@@ -27,6 +26,7 @@ import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.model.ConnectorProperties;
 import com.architeezy.archi.connector.model.Models;
+import com.architeezy.archi.connector.ui.wizards.ConnectorWizardDialog;
 import com.architeezy.archi.connector.ui.wizards.ExportWizard;
 
 /**
@@ -59,7 +59,7 @@ public class ExportMenuHandler extends AbstractHandler {
         }
 
         var wizard = new ExportWizard(model);
-        var dialog = new WizardDialog(shell, wizard);
+        var dialog = new ConnectorWizardDialog(shell, wizard);
         dialog.open();
         return null;
     }

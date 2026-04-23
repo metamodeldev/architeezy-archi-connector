@@ -28,6 +28,14 @@ public enum PullOutcome {
     REMOTE_UNCHANGED,
 
     /** A 3-way merge was needed and the user cancelled it. */
-    CONFLICT_CANCELLED
+    CONFLICT_CANCELLED,
+
+    /**
+     * A 3-way merge with real conflicts was detected; the pull Job returned
+     * without applying changes so the UI can open the resolution dialog and
+     * then schedule a second Job that applies the merged bytes via
+     * {@code applyMergedPull}.
+     */
+    CONFLICT_PENDING
 
 }

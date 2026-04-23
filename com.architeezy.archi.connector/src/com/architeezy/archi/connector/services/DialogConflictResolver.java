@@ -27,7 +27,8 @@ public final class DialogConflictResolver implements IConflictResolver {
     private final ModelSerializer serializer;
 
     /**
-     * Creates a resolver that serializes the merged model with the given serializer.
+     * Creates a resolver that serializes the merged model with the given
+     * serializer.
      *
      * @param serializer model serializer used to produce the merged-content bytes
      */
@@ -38,30 +39,21 @@ public final class DialogConflictResolver implements IConflictResolver {
     @Override
     public byte[] resolve(Comparison comparison, Resource localResource, IMerger.Registry registry)
             throws Exception {
-        byte[][] mergedBytes = { null };
-        Exception[] runError = { null };
-
-        Display.getDefault().syncExec(
-                () -> runDialog(comparison, localResource, registry, mergedBytes, runError));
-
-        if (runError[0] != null) {
-            throw runError[0];
-        }
-        return mergedBytes[0];
+        return Display.getDefault().syncCall(() -> runDialog(comparison, localResource, registry));
     }
 
-    private void runDialog(Comparison comparison, Resource localResource, IMerger.Registry registry,
-            byte[][] mergedBytes, Exception[] runError) {
+    @SuppressWarnings({ "java:S112", "java:S1168" })
+    private byte[] runDialog(Comparison comparison, Resource localResource, IMerger.Registry registry)
+            throws Exception {
         var dialog = new ConflictResolutionDialog(
                 Display.getDefault().getActiveShell(), comparison, localResource, registry, serializer);
         if (dialog.open() != Window.OK) {
-            return;
+            return null;
         }
         if (dialog.getMergeError() != null) {
-            runError[0] = dialog.getMergeError();
-        } else {
-            mergedBytes[0] = dialog.getMergedContent();
+            throw dialog.getMergeError();
         }
+        return dialog.getMergedContent();
     }
 
 }

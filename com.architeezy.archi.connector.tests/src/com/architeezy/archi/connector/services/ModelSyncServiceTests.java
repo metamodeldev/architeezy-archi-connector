@@ -179,7 +179,7 @@ class ModelSyncServiceTests {
                 trackedModelStore, editorManager);
         return new ModelSyncService(new ArchiteezyClient(), authService, registry, snapshotStore,
                 serializer, trackedModelStore, mergeService, localChangeService, updateCheckService,
-                editorManager, Runnable::run);
+                editorManager, DirectUiSynchronizer.INSTANCE);
     }
 
     private ModelSyncService connectedService() {
@@ -198,7 +198,7 @@ class ModelSyncServiceTests {
                 trackedModelStore, editorManager);
         return new ModelSyncService(new ArchiteezyClient(), authService, registry, snapshotStore,
                 serializer, trackedModelStore, mergeService, localChangeService, updateCheckService,
-                editorManager, Runnable::run);
+                editorManager, DirectUiSynchronizer.INSTANCE);
     }
 
     // ------------------------------------------------------------------
@@ -221,7 +221,7 @@ class ModelSyncServiceTests {
         snapshotStore.saveSnapshot(MODEL_ID, bytes);
         remoteBytes = bytes;
 
-        var outcome = disconnectedService().pullModel(model, null);
+        var outcome = disconnectedService().pullModel(model, null).outcome();
 
         assertEquals(PullOutcome.UP_TO_DATE, outcome);
         assertArrayEquals(bytes, snapshotStore.loadSnapshot(MODEL_ID),
@@ -237,7 +237,7 @@ class ModelSyncServiceTests {
         remoteBytes = serializer.serialize(remote);
 
         var model = newModel("Sample");
-        var outcome = disconnectedService().pullModel(model, null);
+        var outcome = disconnectedService().pullModel(model, null).outcome();
 
         assertEquals(PullOutcome.APPLIED, outcome);
         assertEquals("Server-side renamed", model.getName(),
@@ -256,7 +256,7 @@ class ModelSyncServiceTests {
 
         model.setName("Locally renamed"); // local != base
 
-        var outcome = disconnectedService().pullModel(model, null);
+        var outcome = disconnectedService().pullModel(model, null).outcome();
 
         assertEquals(PullOutcome.REMOTE_UNCHANGED, outcome);
         assertEquals("Locally renamed", model.getName(),
@@ -281,7 +281,7 @@ class ModelSyncServiceTests {
         localApp.setName("LocalComponent");
         folderByName(model, "Application").getElements().add(localApp);
 
-        var outcome = disconnectedService().pullModel(model, null);
+        var outcome = disconnectedService().pullModel(model, null).outcome();
 
         assertEquals(PullOutcome.APPLIED, outcome);
         assertTrue(containsElementNamed(model, "Business", "RemoteActor"),

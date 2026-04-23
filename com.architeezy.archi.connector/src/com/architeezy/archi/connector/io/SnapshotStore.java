@@ -15,8 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Supplier;
 
-import org.eclipse.core.runtime.Platform;
-
 /**
  * Stores base snapshots of synchronized models in the plugin's state location.
  *
@@ -87,14 +85,10 @@ public final class SnapshotStore {
      * Deletes the snapshot for the given model identifier.
      *
      * @param modelId the model identifier
+     * @throws IOException if the snapshot exists but cannot be deleted
      */
-    public void deleteSnapshot(String modelId) {
-        try {
-            Files.deleteIfExists(snapshotFile(modelId).toPath());
-        } catch (IOException e) {
-            Platform.getLog(SnapshotStore.class)
-                    .warn("Failed to delete snapshot for " + modelId, e); //$NON-NLS-1$
-        }
+    public void deleteSnapshot(String modelId) throws IOException {
+        Files.deleteIfExists(snapshotFile(modelId).toPath());
     }
 
     private File snapshotFile(String modelId) {

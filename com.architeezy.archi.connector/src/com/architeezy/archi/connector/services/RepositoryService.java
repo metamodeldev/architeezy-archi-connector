@@ -11,11 +11,13 @@ package com.architeezy.archi.connector.services;
 
 import java.util.List;
 
+import com.architeezy.archi.connector.api.ApiException;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
 import com.architeezy.archi.connector.api.dto.PagedResult;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.api.dto.RemoteProject;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
+import com.architeezy.archi.connector.auth.OAuthException;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 
 /**
@@ -24,7 +26,6 @@ import com.architeezy.archi.connector.auth.ProfileStatus;
  *
  * Must be called from a background thread (Job / IRunnableWithProgress).
  */
-@SuppressWarnings("java:S112")
 public final class RepositoryService {
 
     private final ArchiteezyClient client;
@@ -49,10 +50,11 @@ public final class RepositoryService {
      * @param page the page number to retrieve
      * @param size the number of items per page
      * @return a paged result containing the list of remote models
-     * @throws Exception if a communication error occurs
+     * @throws OAuthException if the profile has no valid token
+     * @throws ApiException if the REST call fails
      */
     public PagedResult<RemoteModel> listModels(ConnectionProfile profile,
-            int page, int size) throws Exception {
+            int page, int size) throws OAuthException, ApiException {
         var token = profile.getStatus() == ProfileStatus.CONNECTED
                 ? authService.getValidAccessToken(profile)
                 : null;
@@ -64,9 +66,10 @@ public final class RepositoryService {
      *
      * @param profile the connection profile to use
      * @return list of remote projects
-     * @throws Exception if a communication error occurs
+     * @throws OAuthException if the profile has no valid token
+     * @throws ApiException if the REST call fails
      */
-    public List<RemoteProject> listProjects(ConnectionProfile profile) throws Exception {
+    public List<RemoteProject> listProjects(ConnectionProfile profile) throws OAuthException, ApiException {
         var token = authService.getValidAccessToken(profile);
         return client.listProjects(profile.getServerUrl(), token);
     }
@@ -76,9 +79,10 @@ public final class RepositoryService {
      *
      * @param profile the connection profile to use
      * @param remote the remote model to delete
-     * @throws Exception if the deletion fails
+     * @throws OAuthException if the profile has no valid token
+     * @throws ApiException if the REST call fails
      */
-    public void deleteModel(ConnectionProfile profile, RemoteModel remote) throws Exception {
+    public void deleteModel(ConnectionProfile profile, RemoteModel remote) throws OAuthException, ApiException {
         var token = authService.getValidAccessToken(profile);
         client.deleteModel(token, remote.selfUrl());
     }

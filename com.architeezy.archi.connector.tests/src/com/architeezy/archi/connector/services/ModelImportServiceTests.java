@@ -105,7 +105,7 @@ class ModelImportServiceTests {
                 trackedModels,
                 new SnapshotSupport(serializer, snapshotStore),
                 editorManager,
-                Runnable::run);
+                DirectUiSynchronizer.INSTANCE);
     }
 
     @AfterEach
@@ -205,7 +205,7 @@ class ModelImportServiceTests {
                 tracked,
                 new SnapshotSupport(serializer, snapshots),
                 editorManager,
-                Runnable::run);
+                DirectUiSynchronizer.INSTANCE);
 
         var target = new File(workDir.toFile(), "connected.archimate");
 

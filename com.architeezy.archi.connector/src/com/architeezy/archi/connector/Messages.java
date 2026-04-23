@@ -120,12 +120,31 @@ public final class Messages extends NLS {
 
     public static String ImportWizard_importFailed;
 
+    public static String ImportWizard_importFailedMessage;
+
+    public static String ImportWizard_success;
+
+    public static String ImportWizard_successTitle;
+
     // ExportWizard
     public static String ExportWizard_title;
 
     public static String ExportWizard_exporting;
 
     public static String ExportWizard_exportFailed;
+
+    public static String ExportWizard_exportFailedMessage;
+
+    public static String ExportWizard_success;
+
+    public static String ExportWizard_successTitle;
+
+    // ProgressResultDialog / ResultWizardPage shared labels
+    public static String ProgressDialog_cancelled;
+
+    public static String ProgressDialog_cancelledTitle;
+
+    public static String ProgressDialog_close;
 
     // ExportMenuHandler
     public static String ExportHandler_title;
@@ -167,8 +186,6 @@ public final class Messages extends NLS {
     public static String PullHandler_title;
 
     public static String PullHandler_noModel;
-
-    public static String PullHandler_noUpdate;
 
     public static String PullHandler_jobName;
 

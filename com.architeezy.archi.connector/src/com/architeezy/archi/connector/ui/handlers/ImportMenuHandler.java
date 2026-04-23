@@ -12,9 +12,9 @@ package com.architeezy.archi.connector.ui.handlers;
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
-import org.eclipse.jface.wizard.WizardDialog;
 import org.eclipse.ui.handlers.HandlerUtil;
 
+import com.architeezy.archi.connector.ui.wizards.ConnectorWizardDialog;
 import com.architeezy.archi.connector.ui.wizards.ImportWizard;
 
 /**
@@ -25,7 +25,7 @@ public class ImportMenuHandler extends AbstractHandler {
     @Override
     public Object execute(ExecutionEvent event) throws ExecutionException {
         var wizard = new ImportWizard();
-        var dialog = new WizardDialog(HandlerUtil.getActiveShell(event), wizard);
+        var dialog = new ConnectorWizardDialog(HandlerUtil.getActiveShell(event), wizard);
         dialog.open();
         return null;
     }

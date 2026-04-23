@@ -73,7 +73,7 @@ class SnapshotStoreTests {
     }
 
     @Test
-    void deleteOnMissingIsNoop() {
+    void deleteOnMissingIsNoop() throws IOException {
         store.deleteSnapshot(modelId);
         assertFalse(store.hasSnapshot(modelId));
     }

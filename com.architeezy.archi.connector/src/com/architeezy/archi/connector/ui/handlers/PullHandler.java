@@ -10,17 +10,13 @@
 package com.architeezy.archi.connector.ui.handlers;
 
 import java.text.MessageFormat;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Platform;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.IJobFunction;
-import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.handlers.HandlerUtil;
 
@@ -30,7 +26,9 @@ import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.model.PullOutcome;
 import com.architeezy.archi.connector.services.ModelSyncService;
-import com.architeezy.archi.connector.services.UpdateCheckService;
+import com.architeezy.archi.connector.services.PendingConflict;
+import com.architeezy.archi.connector.ui.dialogs.ConflictResolutionDialog;
+import com.architeezy.archi.connector.ui.dialogs.ProgressResultDialog;
 
 /**
  * Toolbar handler that downloads the latest model content from the Architeezy
@@ -38,37 +36,22 @@ import com.architeezy.archi.connector.services.UpdateCheckService;
  */
 public class PullHandler extends AbstractTrackedModelHandler {
 
-    private final Runnable updateListener = this::refreshEnabled;
-
-    /** Creates the handler and subscribes to remote update notifications. */
-    public PullHandler() {
-        updateCheckService().addListener(updateListener);
-    }
-
-    private static UpdateCheckService updateCheckService() {
-        return ConnectorPlugin.getInstance().services().updateCheckService();
-    }
-
     private static ModelSyncService modelSyncService() {
         return ConnectorPlugin.getInstance().services().modelSyncService();
     }
 
     @Override
     protected boolean isEnabledForModel(IArchimateModel model) {
-        return updateCheckService().hasUpdate(model);
+        return true;
     }
 
     @Override
     @SuppressWarnings("java:S3516")
     public Object execute(ExecutionEvent event) throws ExecutionException {
         var shell = HandlerUtil.getActiveShell(event);
-        var model = getTargetModel(updateCheckService()::hasUpdate);
+        var model = getTargetModel(m -> true);
         if (model == null) {
             MessageDialog.openInformation(shell, Messages.PullHandler_title, Messages.PullHandler_noModel);
-            return null;
-        }
-        if (!updateCheckService().hasUpdate(model)) {
-            MessageDialog.openInformation(shell, Messages.PullHandler_title, Messages.PullHandler_noUpdate);
             return null;
         }
         try {
@@ -80,39 +63,56 @@ public class PullHandler extends AbstractTrackedModelHandler {
             return null;
         }
 
-        runAuthenticated(model, shell, Messages.PullHandler_title, () -> {
-            var job = Job.create(Messages.PullHandler_jobName,
-                    (IJobFunction) monitor -> executePullJob(model, shell, monitor));
-            job.setUser(true);
-            job.schedule();
-        });
+        runAuthenticated(model, shell, Messages.PullHandler_title, () -> runPull(model, shell));
         return null;
     }
 
-    @Override
-    public void dispose() {
-        updateCheckService().removeListener(updateListener);
-        super.dispose();
+    private static void runPull(IArchimateModel model, Shell shell) {
+        var pendingRef = new AtomicReference<PendingConflict>();
+        var dialog = new ProgressResultDialog(shell, Messages.PullHandler_title,
+                Messages.PullHandler_jobName, Messages.PullHandler_failed,
+                monitor -> runPullTask(model, monitor, pendingRef));
+        dialog.open();
+        var pending = pendingRef.get();
+        if (pending != null) {
+            openConflictDialog(model, shell, pending);
+        }
     }
 
-    private static IStatus executePullJob(IArchimateModel model, Shell shell, IProgressMonitor monitor) {
-        var status = Status.OK_STATUS;
-        try {
-            var outcome = modelSyncService().pullModel(model, monitor);
-            if (outcome == PullOutcome.APPLIED) {
-                Display.getDefault().asyncExec(() -> MessageDialog.openInformation(shell,
-                        Messages.PullHandler_title, Messages.PullHandler_success));
-            } else if (outcome == PullOutcome.REMOTE_UNCHANGED) {
-                Display.getDefault().asyncExec(() -> MessageDialog.openInformation(shell,
-                        Messages.PullHandler_title, Messages.PullHandler_remoteUnchanged));
-            }
-        } catch (Exception e) {
-            Platform.getLog(PullHandler.class).error("Pull failed", e); //$NON-NLS-1$
-            status = Status.error(MessageFormat.format(Messages.PullHandler_failed, e.getMessage()), e);
-            Display.getDefault().asyncExec(() -> MessageDialog.openError(shell, Messages.PullHandler_title,
-                    MessageFormat.format(Messages.PullHandler_failed, e.getMessage())));
+    private static ProgressResultDialog.Outcome runPullTask(IArchimateModel model, IProgressMonitor monitor,
+            AtomicReference<PendingConflict> pendingRef) throws Exception {
+        var result = modelSyncService().pullModel(model, monitor);
+        if (result.outcome() == PullOutcome.CONFLICT_PENDING) {
+            pendingRef.set(result.pending());
         }
-        return status;
+        return ProgressResultDialog.Outcome.silent();
+    }
+
+    private static void openConflictDialog(IArchimateModel model, Shell shell, PendingConflict pending) {
+        var dialog = new ConflictResolutionDialog(shell, pending.comparison(), pending.localResource(),
+                pending.mergerRegistry(),
+                ConnectorPlugin.getInstance().services().modelSerializer());
+        if (dialog.open() != org.eclipse.jface.window.Window.OK) {
+            return;
+        }
+        if (dialog.getMergeError() != null) {
+            var e = dialog.getMergeError();
+            Platform.getLog(PullHandler.class).error("Conflict resolution failed", e); //$NON-NLS-1$
+            MessageDialog.openError(shell, Messages.PullHandler_title,
+                    MessageFormat.format(Messages.PullHandler_failed, e.getMessage()));
+            return;
+        }
+        var merged = dialog.getMergedContent();
+        if (merged == null) {
+            return;
+        }
+        var applyDialog = new ProgressResultDialog(shell, Messages.PullHandler_title,
+                Messages.PullHandler_jobName, Messages.PullHandler_failed,
+                monitor -> {
+                    modelSyncService().applyMergedPull(model, merged, pending, monitor);
+                    return ProgressResultDialog.Outcome.silent();
+                });
+        applyDialog.open();
     }
 
 }

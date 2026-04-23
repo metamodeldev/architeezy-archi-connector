@@ -20,6 +20,7 @@ import org.eclipse.emf.compare.merge.IMerger;
 import org.eclipse.emf.compare.scope.DefaultComparisonScope;
 
 import com.archimatetool.model.IArchimateModel;
+import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.io.ModelSerializer;
 
 /**
@@ -69,6 +70,36 @@ public final class MergeService {
      */
     public byte[] computeMergedContent(IArchimateModel liveModel, byte[] baseBytes, byte[] remoteBytes)
             throws Exception {
+        var prep = prepareMerge(liveModel, baseBytes, remoteBytes, null, null);
+        if (prep.mergedBytes() != null) {
+            return prep.mergedBytes();
+        }
+        var p = prep.pending();
+        return conflictResolver.resolve(p.comparison(), p.localResource(), p.mergerRegistry());
+    }
+
+    /**
+     * Runs the first stage of a 3-way merge without blocking on the UI.
+     *
+     * If no real conflicts are found, the remote changes are applied in
+     * memory and the merged bytes are returned via
+     * {@link MergePreparation#autoMerged}. Otherwise a {@link PendingConflict}
+     * is returned carrying the EMF Compare state the UI needs to open the
+     * resolution dialog, so the caller can finish its Job and hand off to the
+     * UI thread.
+     *
+     * @param liveModel the locally open model
+     * @param baseBytes the base snapshot bytes
+     * @param remoteBytes the remote model bytes
+     * @param remote metadata of the remote model (carried through for the
+     *        continuation Job); may be {@code null} when called from push
+     * @param modelId tracked-model identifier (carried through); may be
+     *        {@code null} when called from push
+     * @return a {@link MergePreparation} describing what the UI must do next
+     * @throws Exception if serialization or comparison fails
+     */
+    public MergePreparation prepareMerge(IArchimateModel liveModel, byte[] baseBytes, byte[] remoteBytes,
+            RemoteModel remote, String modelId) throws Exception {
         var baseModel = serializer.deserializeInMemory(baseBytes);
         var localCopy = serializer.deserializeInMemory(serializer.serialize(liveModel));
         var remoteModel = serializer.deserializeInMemory(remoteBytes);
@@ -85,11 +116,12 @@ public final class MergeService {
 
         if (!hasRealConflicts) {
             applyAllRemoteChanges(comparison);
-            return serializer.serialize(localCopy);
+            return MergePreparation.autoMerged(serializer.serialize(localCopy));
         }
 
         var registry = IMerger.RegistryImpl.createStandaloneInstance();
-        return conflictResolver.resolve(comparison, localResource, registry);
+        return MergePreparation.needsResolution(
+                new PendingConflict(comparison, localResource, registry, remote, modelId));
     }
 
     private static void applyAllRemoteChanges(Comparison comparison) {

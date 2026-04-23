@@ -10,7 +10,6 @@
 package com.architeezy.archi.connector;
 
 import java.nio.file.Path;
-import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 
 import org.eclipse.equinox.security.storage.ISecurePreferences;
@@ -36,6 +35,7 @@ import com.architeezy.archi.connector.services.ModelExportService;
 import com.architeezy.archi.connector.services.ModelImportService;
 import com.architeezy.archi.connector.services.ModelSyncService;
 import com.architeezy.archi.connector.services.RepositoryService;
+import com.architeezy.archi.connector.services.UiSynchronizer;
 import com.architeezy.archi.connector.services.UpdateCheckService;
 import com.architeezy.archi.connector.ui.navigator.ModelTreeDecorator;
 
@@ -108,18 +108,23 @@ public final class ConnectorServices {
         this.editorModelManager = new DefaultEditorModelManager();
         this.authService = new AuthService(oauthManager, tokenStore, profileRegistry);
         this.repositoryService = new RepositoryService(apiClient, authService);
-        final Executor uiExecutor = Display.getDefault()::syncExec;
+        final UiSynchronizer uiSync = new UiSynchronizer() {
+            @Override
+            public <T> T syncCall(java.util.concurrent.Callable<T> task) throws Exception {
+                return Display.getDefault().syncCall(task::call);
+            }
+        };
         this.modelExportService = new ModelExportService(apiClient, authService, modelSerializer,
-                trackedModelStore, snapshotSupport, editorModelManager, uiExecutor);
+                trackedModelStore, snapshotSupport, editorModelManager, uiSync);
         this.modelImportService = new ModelImportService(apiClient, authService, modelSerializer,
-                trackedModelStore, snapshotSupport, editorModelManager, uiExecutor);
+                trackedModelStore, snapshotSupport, editorModelManager, uiSync);
         this.mergeService = new MergeService(modelSerializer, new DialogConflictResolver(modelSerializer));
         this.updateCheckService = new UpdateCheckService(apiClient, authService, profileRegistry,
                 trackedModelStore, editorModelManager);
         this.localChangeService = new LocalChangeService(snapshotStore, modelSerializer, editorModelManager);
         this.modelSyncService = new ModelSyncService(apiClient, authService, profileRegistry, snapshotStore,
                 modelSerializer, trackedModelStore, mergeService, localChangeService, updateCheckService,
-                editorModelManager, uiExecutor);
+                editorModelManager, uiSync);
         this.modelTreeDecorator = new ModelTreeDecorator(updateCheckService, localChangeService,
                 trackedModelStore);
     }

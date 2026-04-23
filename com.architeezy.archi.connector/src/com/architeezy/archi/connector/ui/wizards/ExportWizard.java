@@ -10,10 +10,14 @@
 package com.architeezy.archi.connector.ui.wizards;
 
 import java.lang.reflect.InvocationTargetException;
+import java.text.MessageFormat;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.jface.dialogs.IDialogConstants;
+import org.eclipse.jface.dialogs.IPageChangeProvider;
 import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.jface.wizard.IWizardContainer;
+import org.eclipse.jface.wizard.IWizardPage;
 import org.eclipse.jface.wizard.Wizard;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.ui.IExportWizard;
@@ -33,6 +37,10 @@ public class ExportWizard extends Wizard implements IExportWizard {
     private ProfileSelectionPage profilePage;
 
     private ProjectSelectionPage projectPage;
+
+    private ResultWizardPage resultPage;
+
+    private boolean cancelled;
 
     /**
      * Creates the wizard for exporting {@code model}.
@@ -54,27 +62,70 @@ public class ExportWizard extends Wizard implements IExportWizard {
     public void addPages() {
         profilePage = new ProfileSelectionPage(true);
         projectPage = new ProjectSelectionPage();
+        resultPage = new ResultWizardPage(Messages.ExportWizard_successTitle,
+                Messages.ExportWizard_exportFailed, Messages.ProgressDialog_cancelledTitle);
         addPage(profilePage);
         addPage(projectPage);
+        addPage(resultPage);
+    }
+
+    @Override
+    public void setContainer(IWizardContainer wizardContainer) {
+        super.setContainer(wizardContainer);
+        if (wizardContainer instanceof IPageChangeProvider provider) {
+            provider.addPageChangedListener(event -> refreshButtonsForPage(event.getSelectedPage()));
+        }
+    }
+
+    @Override
+    public IWizardPage getNextPage(IWizardPage page) {
+        if (page == projectPage) {
+            return null;
+        }
+        return super.getNextPage(page);
     }
 
     @Override
     public boolean performFinish() {
+        if (getContainer().getCurrentPage() == resultPage) {
+            return true;
+        }
         var profile = profilePage.getSelectedProfile();
         var project = projectPage.getSelectedProject();
 
+        cancelled = false;
         try {
-            getContainer().run(true, false, monitor -> doExport(profile, project, monitor));
-        } catch (InvocationTargetException e) {
-            var cause = e.getCause();
-            MessageDialog.openError(getShell(), Messages.ExportWizard_exportFailed,
-                    cause != null ? cause.getMessage() : e.getMessage());
-            return false;
+            getContainer().run(true, true, monitor -> doExport(profile, project, monitor));
+            resultPage.showResult(ResultWizardPage.Kind.SUCCESS,
+                    NLS.bind(Messages.ExportWizard_success, model.getName()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return false;
+            resultPage.showResult(ResultWizardPage.Kind.CANCELLED, Messages.ProgressDialog_cancelled);
+        } catch (InvocationTargetException e) {
+            var cause = e.getCause();
+            var message = cause != null && cause.getMessage() != null ? cause.getMessage() : e.getMessage();
+            if (cancelled) {
+                resultPage.showResult(ResultWizardPage.Kind.CANCELLED, Messages.ProgressDialog_cancelled);
+            } else {
+                resultPage.showResult(ResultWizardPage.Kind.ERROR,
+                        MessageFormat.format(Messages.ExportWizard_exportFailedMessage, message));
+            }
         }
-        return true;
+        getContainer().showPage(resultPage);
+        return false;
+    }
+
+    private void refreshButtonsForPage(Object selectedPage) {
+        if (!(getContainer() instanceof ConnectorWizardDialog dialog)) {
+            return;
+        }
+        if (selectedPage == resultPage) {
+            dialog.setFinishButtonText(Messages.ProgressDialog_close);
+            dialog.setCancelButtonEnabled(false);
+        } else {
+            dialog.setFinishButtonText(IDialogConstants.FINISH_LABEL);
+            dialog.setCancelButtonEnabled(true);
+        }
     }
 
     private void doExport(com.architeezy.archi.connector.auth.ConnectionProfile profile,
@@ -85,6 +136,9 @@ public class ExportWizard extends Wizard implements IExportWizard {
             ConnectorPlugin.getInstance().services().modelExportService()
                     .exportModel(profile, model, project.id(), monitor);
         } catch (Exception e) {
+            if (monitor.isCanceled()) {
+                cancelled = true;
+            }
             throw new InvocationTargetException(e);
         } finally {
             monitor.done();

@@ -29,7 +29,6 @@ import com.architeezy.archi.connector.auth.TokenStore;
  * Thread-safety: token refresh uses a per-profile lock to ensure only one
  * refresh request is in-flight at a time.
  */
-@SuppressWarnings("java:S112")
 public final class AuthService {
 
     private static final long REFRESH_MARGIN_SECONDS = 60;

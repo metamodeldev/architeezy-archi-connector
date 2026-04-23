@@ -9,14 +9,13 @@
  */
 package com.architeezy.archi.connector.services;
 
-import java.util.concurrent.Executor;
-
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Platform;
 
 import com.archimatetool.model.IArchimateModel;
 import com.archimatetool.modelimporter.ModelImporter;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
+import com.architeezy.archi.connector.api.CancelSignal;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.auth.ProfileRegistry;
 import com.architeezy.archi.connector.auth.ProfileStatus;
@@ -57,7 +56,7 @@ public final class ModelSyncService {
 
     private final IEditorModelManagerAdapter editorModelManager;
 
-    private final Executor uiExecutor;
+    private final UiSynchronizer uiSync;
 
     private final SyncScenarioDetector scenarioDetector;
 
@@ -74,18 +73,16 @@ public final class ModelSyncService {
      * @param localChangeService local-change tracker (cleared after pull/push)
      * @param updateCheckService remote-update tracker (cleared after pull/push)
      * @param editorModelManager editor-model manager adapter used to save the
-     *         model after a pull
-     * @param uiExecutor synchronous executor used to run the model-import step
-     *         on the UI thread; must block until the given runnable finishes
-     *         (e.g. {@code Display.getDefault()::syncExec}) so that any error
-     *         set by the runnable is observed by the caller
+     *        model after a pull
+     * @param uiSync UI-thread synchronizer used to run the model-import step
+     *        on the UI thread and propagate any exception back to the caller
      */
-    @SuppressWarnings({"checkstyle:ParameterNumber", "java:S107"})
+    @SuppressWarnings({ "checkstyle:ParameterNumber", "java:S107" })
     public ModelSyncService(ArchiteezyClient client, AuthService authService, ProfileRegistry profileRegistry,
             SnapshotStore snapshotStore, ModelSerializer serializer, TrackedModelStore trackedModels,
             MergeService mergeService, LocalChangeService localChangeService,
             UpdateCheckService updateCheckService, IEditorModelManagerAdapter editorModelManager,
-            Executor uiExecutor) {
+            UiSynchronizer uiSync) {
         this.client = client;
         this.authService = authService;
         this.profileRegistry = profileRegistry;
@@ -96,7 +93,7 @@ public final class ModelSyncService {
         this.localChangeService = localChangeService;
         this.updateCheckService = updateCheckService;
         this.editorModelManager = editorModelManager;
-        this.uiExecutor = uiExecutor;
+        this.uiSync = uiSync;
         this.scenarioDetector = new SyncScenarioDetector(serializer, snapshotStore);
     }
 
@@ -107,13 +104,21 @@ public final class ModelSyncService {
      * Downloads the latest model content from the Architeezy server and
      * applies it to the locally open model without closing or reopening it.
      *
+     * <p>
+     * When a 3-way merge surfaces real conflicts, this method does <b>not</b>
+     * open the resolution dialog: it returns a
+     * {@link PullResult#pending(PendingConflict)} so the caller can finish its
+     * Job, open the dialog on the UI thread, and schedule a follow-up Job that
+     * calls {@link #applyMergedPull}. This keeps Jobs from appearing stuck in
+     * the Progress View while the user decides.
+     *
      * @param model the locally open model to update
      * @param monitor progress monitor
-     * @return the outcome of the pull
+     * @return the pull result
      * @throws IllegalStateException if the model is not tracked
      * @throws Exception if the pull fails
      */
-    public PullOutcome pullModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
+    public PullResult pullModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
         var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
         if (modelUrl == null) {
             throw new IllegalStateException("Model is not tracked by Architeezy"); //$NON-NLS-1$
@@ -131,7 +136,8 @@ public final class ModelSyncService {
         var remote = client.getModel(serverUrl, token, modelId);
 
         SnapshotSupport.setSubTask(monitor, "Downloading " + remote.name()); //$NON-NLS-1$
-        final var remoteContent = client.getModelContent(token, remote.contentUrl());
+        CancelSignal cancel = monitor == null ? CancelSignal.NEVER : monitor::isCanceled;
+        final var remoteContent = client.getModelContent(token, remote.contentUrl(), cancel);
 
         SnapshotSupport.setSubTask(monitor, "Analyzing changes"); //$NON-NLS-1$
         var scenario = scenarioDetector.detect(model, modelId, remoteContent);
@@ -139,30 +145,45 @@ public final class ModelSyncService {
         switch (scenario) {
         case UP_TO_DATE:
             updateCheckService.clearUpdate(model);
-            return PullOutcome.UP_TO_DATE;
+            return PullResult.completed(PullOutcome.UP_TO_DATE);
         case SIMPLE_PULL:
             SnapshotSupport.setSubTask(monitor, "Applying remote changes"); //$NON-NLS-1$
             applyNonDestructivePull(model, remoteContent, remote, modelId);
-            return PullOutcome.APPLIED;
+            return PullResult.completed(PullOutcome.APPLIED);
         case SIMPLE_PUSH:
             updateCheckService.clearUpdate(model);
-            return PullOutcome.REMOTE_UNCHANGED;
+            return PullResult.completed(PullOutcome.REMOTE_UNCHANGED);
         case DIVERGED:
-            return applyDivergedPull(model, modelId, remoteContent, remote, monitor);
+            return prepareDivergedPull(model, modelId, remoteContent, remote, monitor);
         default:
-            return PullOutcome.UP_TO_DATE;
+            return PullResult.completed(PullOutcome.UP_TO_DATE);
         }
+    }
+
+    /**
+     * Completes a pull after the UI has resolved a {@link PendingConflict}
+     * produced by {@link #pullModel}.
+     *
+     * @param model the locally open model
+     * @param mergedBytes the merged content produced by the UI
+     * @param pending the conflict context returned by the first-stage pull
+     * @param monitor progress monitor
+     * @throws Exception if applying the merged bytes fails
+     */
+    public void applyMergedPull(IArchimateModel model, byte[] mergedBytes, PendingConflict pending,
+            IProgressMonitor monitor) throws Exception {
+        SnapshotSupport.setSubTask(monitor, "Applying merged changes"); //$NON-NLS-1$
+        applyNonDestructivePull(model, mergedBytes, pending.remote(), pending.modelId());
     }
 
     private void applyNonDestructivePull(IArchimateModel target, byte[] remoteContent,
             RemoteModel remote, String modelId) throws Exception {
         var incoming = serializer.deserializeInMemory(remoteContent);
 
-        var uiError = new Exception[1];
-        uiExecutor.execute(() -> runImportOnUi(incoming, target, remote, uiError));
-        if (uiError[0] != null) {
-            throw uiError[0];
-        }
+        uiSync.syncCall(() -> {
+            importIntoTarget(incoming, target, remote);
+            return null;
+        });
 
         try {
             snapshotStore.saveSnapshot(modelId, serializer.serialize(target));
@@ -174,33 +195,29 @@ public final class ModelSyncService {
         updateCheckService.clearUpdate(target);
     }
 
-    private PullOutcome applyDivergedPull(IArchimateModel model, String modelId,
+    private PullResult prepareDivergedPull(IArchimateModel model, String modelId,
             byte[] remoteContent, RemoteModel remote, IProgressMonitor monitor) throws Exception {
-        SnapshotSupport.setSubTask(monitor, "Resolving conflicts"); //$NON-NLS-1$
+        SnapshotSupport.setSubTask(monitor, "Analyzing 3-way merge"); //$NON-NLS-1$
         var baseBytes = snapshotStore.loadSnapshot(modelId);
-        var mergedBytes = mergeService.computeMergedContent(model, baseBytes, remoteContent);
-        if (mergedBytes == null) {
-            return PullOutcome.CONFLICT_CANCELLED;
+        var prep = mergeService.prepareMerge(model, baseBytes, remoteContent, remote, modelId);
+        if (prep.mergedBytes() != null) {
+            SnapshotSupport.setSubTask(monitor, "Applying merged changes"); //$NON-NLS-1$
+            applyNonDestructivePull(model, prep.mergedBytes(), remote, modelId);
+            return PullResult.completed(PullOutcome.APPLIED);
         }
-        SnapshotSupport.setSubTask(monitor, "Applying merged changes"); //$NON-NLS-1$
-        applyNonDestructivePull(model, mergedBytes, remote, modelId);
-        return PullOutcome.APPLIED;
+        return PullResult.pending(prep.pending());
     }
 
-    private void runImportOnUi(IArchimateModel incoming, IArchimateModel target,
-            RemoteModel remote, Exception[] uiError) {
-        try {
-            var importer = new ModelImporter();
-            importer.setUpdateAll(true);
-            importer.setUpdateFolderStructure(true);
-            importer.doImport(incoming, target);
-            ConnectorProperties.setProperty(target, ConnectorProperties.KEY_URL, remote.selfUrl());
-            editorModelManager.saveModel(target);
-            trackedModels.setLastModified(
-                    ConnectorProperties.extractModelId(remote.selfUrl()), remote.lastModified());
-        } catch (Exception e) {
-            uiError[0] = e;
-        }
+    private void importIntoTarget(IArchimateModel incoming, IArchimateModel target, RemoteModel remote)
+            throws Exception {
+        var importer = new ModelImporter();
+        importer.setUpdateAll(true);
+        importer.setUpdateFolderStructure(true);
+        importer.doImport(incoming, target);
+        ConnectorProperties.setProperty(target, ConnectorProperties.KEY_URL, remote.selfUrl());
+        editorModelManager.saveModel(target);
+        trackedModels.setLastModified(
+                ConnectorProperties.extractModelId(remote.selfUrl()), remote.lastModified());
     }
 
     // -----------------------------------------------------------------------
@@ -211,7 +228,8 @@ public final class ModelSyncService {
      *
      * @param model the locally open model to push
      * @param monitor progress monitor
-     * @throws IllegalStateException if the model is not tracked or no profile is connected
+     * @throws IllegalStateException if the model is not tracked or no profile is
+     *         connected
      * @throws Exception if the push fails
      */
     public void pushModel(IArchimateModel model, IProgressMonitor monitor) throws Exception {
@@ -230,7 +248,8 @@ public final class ModelSyncService {
 
         SnapshotSupport.setSubTask(monitor, "Checking for remote updates"); //$NON-NLS-1$
         var remote = client.getModel(serverUrl, token, modelId);
-        final var remoteContent = client.getModelContent(token, remote.contentUrl());
+        CancelSignal cancel = monitor == null ? CancelSignal.NEVER : monitor::isCanceled;
+        final var remoteContent = client.getModelContent(token, remote.contentUrl(), cancel);
         final var scenario = scenarioDetector.detect(model, modelId, remoteContent);
 
         if (scenario == SyncScenario.SIMPLE_PULL || scenario == SyncScenario.DIVERGED) {
@@ -256,7 +275,8 @@ public final class ModelSyncService {
             String modelId, String modelUrl, IProgressMonitor monitor) throws Exception {
         SnapshotSupport.setSubTask(monitor, "Uploading model"); //$NON-NLS-1$
         var uploadContent = serializer.serialize(model);
-        var putResult = client.pushModelContent(token, modelUrl, uploadContent);
+        CancelSignal cancel = monitor == null ? CancelSignal.NEVER : monitor::isCanceled;
+        var putResult = client.pushModelContent(token, modelUrl, uploadContent, cancel);
 
         SnapshotSupport.setSubTask(monitor, "Updating metadata"); //$NON-NLS-1$
         final var updatedRemote = putResult != null

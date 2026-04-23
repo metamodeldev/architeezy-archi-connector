@@ -52,6 +52,11 @@ public final class LocalChangeService {
 
     private final PropertyChangeListener modelManagerListener = this::onModelManagerEvent;
 
+    @SuppressWarnings("java:S3077")
+    private volatile Job initialRecheckJob;
+
+    private volatile boolean stopped;
+
     /**
      * Creates a service that compares models against their snapshots stored in
      * {@code snapshotStore} using the given {@code serializer}.
@@ -78,7 +83,13 @@ public final class LocalChangeService {
 
     /** Stops listening and clears all tracked state. */
     public void stop() {
+        stopped = true;
         editorModelManager.removePropertyChangeListener(modelManagerListener);
+        var initial = initialRecheckJob;
+        if (initial != null) {
+            initial.cancel();
+            initialRecheckJob = null;
+        }
         cancelAllPendingRechecks();
         savedFilesDiffer.clear();
     }
@@ -170,6 +181,9 @@ public final class LocalChangeService {
     }
 
     private void scheduleRecheck(IArchimateModel model) {
+        if (stopped) {
+            return;
+        }
         var url = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
         var jobRef = new Job[1];
         var job = Job.create("Checking local model changes", //$NON-NLS-1$
@@ -196,6 +210,7 @@ public final class LocalChangeService {
         var job = Job.create("Checking local model changes", //$NON-NLS-1$
                 (IJobFunction) this::runRecheckAll);
         job.setSystem(true);
+        initialRecheckJob = job;
         job.schedule();
     }
 

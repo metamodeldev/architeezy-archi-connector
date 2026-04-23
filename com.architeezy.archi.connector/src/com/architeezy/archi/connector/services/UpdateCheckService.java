@@ -38,7 +38,7 @@ import com.architeezy.archi.connector.model.IEditorModelManagerAdapter;
 public final class UpdateCheckService {
 
     /** Check interval in milliseconds. */
-    private static final long CHECK_INTERVAL_MS = 5 * 1000L;
+    private static final long CHECK_INTERVAL_MS = 60 * 1000L;
 
     private final ArchiteezyClient client;
 

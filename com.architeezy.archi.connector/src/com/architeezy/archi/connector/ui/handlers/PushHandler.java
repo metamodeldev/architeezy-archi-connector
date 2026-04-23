@@ -13,15 +13,8 @@ import java.text.MessageFormat;
 
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Platform;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.IJobFunction;
-import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
-import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.archimatetool.editor.model.IEditorModelManager;
@@ -30,6 +23,7 @@ import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.services.LocalChangeService;
 import com.architeezy.archi.connector.services.ModelSyncService;
+import com.architeezy.archi.connector.ui.dialogs.ProgressResultDialog;
 
 /**
  * Toolbar handler that uploads the active model's local changes to the
@@ -76,10 +70,13 @@ public class PushHandler extends AbstractTrackedModelHandler {
         }
 
         runAuthenticated(model, shell, Messages.PushHandler_title, () -> {
-            var job = Job.create(Messages.PushHandler_jobName,
-                    (IJobFunction) monitor -> executePushJob(model, shell, monitor));
-            job.setUser(true);
-            job.schedule();
+            var dialog = new ProgressResultDialog(shell, Messages.PushHandler_title,
+                    Messages.PushHandler_jobName, Messages.PushHandler_failed,
+                    monitor -> {
+                        modelSyncService().pushModel(model, monitor);
+                        return ProgressResultDialog.Outcome.silent();
+                    });
+            dialog.open();
         });
         return null;
     }
@@ -88,21 +85,6 @@ public class PushHandler extends AbstractTrackedModelHandler {
     public void dispose() {
         localChangeService().removeListener(changeListener);
         super.dispose();
-    }
-
-    private static IStatus executePushJob(IArchimateModel model, Shell shell, IProgressMonitor monitor) {
-        var status = Status.OK_STATUS;
-        try {
-            modelSyncService().pushModel(model, monitor);
-            Display.getDefault().asyncExec(() -> MessageDialog.openInformation(shell,
-                    Messages.PushHandler_title, Messages.PushHandler_success));
-        } catch (Exception e) {
-            Platform.getLog(PushHandler.class).error("Push failed", e); //$NON-NLS-1$
-            status = Status.error(MessageFormat.format(Messages.PushHandler_failed, e.getMessage()), e);
-            Display.getDefault().asyncExec(() -> MessageDialog.openError(shell, Messages.PushHandler_title,
-                    MessageFormat.format(Messages.PushHandler_failed, e.getMessage())));
-        }
-        return status;
     }
 
 }

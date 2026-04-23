@@ -11,12 +11,12 @@ package com.architeezy.archi.connector.services;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.Executor;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
+import com.architeezy.archi.connector.api.CancelSignal;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
 import com.architeezy.archi.connector.io.ModelSerializer;
 import com.architeezy.archi.connector.io.SnapshotSupport;
@@ -46,7 +46,7 @@ public final class ModelExportService {
 
     private final IEditorModelManagerAdapter editorModelManager;
 
-    private final Executor uiExecutor;
+    private final UiSynchronizer uiSync;
 
     /**
      * Creates an export service that uses the given collaborators.
@@ -58,21 +58,21 @@ public final class ModelExportService {
      * @param snapshotSupport helper that saves base snapshots
      * @param editorModelManager editor-model manager adapter used to save the
      *         model after the URL property is set
-     * @param uiExecutor synchronous executor used to set the tracking property
-     *         and save the model on the UI thread; must block until the given
-     *         runnable finishes (e.g. {@code Display.getDefault()::syncExec})
+     * @param uiSync UI-thread synchronizer used to set the tracking property
+     *         and save the model on the UI thread and propagate any exception
+     *         back to the caller
      */
     @SuppressWarnings("checkstyle:ParameterNumber")
     public ModelExportService(ArchiteezyClient client, AuthService authService, ModelSerializer serializer,
             TrackedModelStore trackedModels, SnapshotSupport snapshotSupport,
-            IEditorModelManagerAdapter editorModelManager, Executor uiExecutor) {
+            IEditorModelManagerAdapter editorModelManager, UiSynchronizer uiSync) {
         this.client = client;
         this.authService = authService;
         this.serializer = serializer;
         this.trackedModels = trackedModels;
         this.snapshotSupport = snapshotSupport;
         this.editorModelManager = editorModelManager;
-        this.uiExecutor = uiExecutor;
+        this.uiSync = uiSync;
     }
 
     /**
@@ -91,21 +91,15 @@ public final class ModelExportService {
         var fileName = buildExportFileName(model);
         var content = serializer.serialize(model);
         SnapshotSupport.setSubTask(monitor, "Uploading model"); //$NON-NLS-1$
-        var created = client.exportModel(profile.getServerUrl(), token, projectId, fileName, content);
+        CancelSignal cancel = monitor == null ? CancelSignal.NEVER : monitor::isCanceled;
+        var created = client.exportModel(profile.getServerUrl(), token, projectId, fileName, content, cancel);
 
         SnapshotSupport.setSubTask(monitor, "Updating metadata"); //$NON-NLS-1$
-        var uiError = new Exception[1];
-        uiExecutor.execute(() -> {
-            try {
-                ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, created.selfUrl());
-                editorModelManager.saveModel(model);
-            } catch (Exception e) {
-                uiError[0] = e;
-            }
+        uiSync.syncCall(() -> {
+            ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, created.selfUrl());
+            editorModelManager.saveModel(model);
+            return null;
         });
-        if (uiError[0] != null) {
-            throw uiError[0];
-        }
 
         var modelId = ConnectorProperties.extractModelId(created.selfUrl());
         if (modelId != null) {

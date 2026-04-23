@@ -235,12 +235,12 @@ public abstract class AbstractTrackedModelHandler extends AbstractHandler {
         if (w == null) {
             return;
         }
-        try {
-            w.getSelectionService().removeSelectionListener(selectionListener);
-            w.getPartService().removePartListener(partListener);
-        } catch (Exception ignored) {
-            // Window may already be disposed
+        var shell = w.getShell();
+        if (shell != null && shell.isDisposed()) {
+            return;
         }
+        w.getSelectionService().removeSelectionListener(selectionListener);
+        w.getPartService().removePartListener(partListener);
     }
 
     private final class PartListener implements IPartListener2 {

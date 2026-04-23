@@ -16,7 +16,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 
 import com.architeezy.archi.connector.api.dto.PagedResult;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
@@ -42,8 +45,17 @@ public class ArchiteezyClient {
 
     private static final String QUOTE = "\""; //$NON-NLS-1$
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+
+    private static final Duration TRANSFER_TIMEOUT = Duration.ofSeconds(120);
+
+    private static final long CANCEL_POLL_INTERVAL_MS = 100L;
+
     private final HttpClient http = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(CONNECT_TIMEOUT)
             .build();
 
     // -----------------------------------------------------------------------
@@ -91,15 +103,32 @@ public class ArchiteezyClient {
      * @throws ApiException on HTTP or I/O error
      */
     public byte[] getModelContent(String accessToken, String contentUrl) throws ApiException {
+        return getModelContent(accessToken, contentUrl, CancelSignal.NEVER);
+    }
+
+    /**
+     * Downloads the raw ArchiMate content, aborting the transfer if
+     * {@code cancel} fires.
+     *
+     * @param accessToken OAuth2 bearer token (may be {@code null} for public
+     *        content).
+     * @param contentUrl direct URL to the model content
+     * @param cancel cooperative cancellation signal
+     * @return raw content bytes
+     * @throws ApiException on HTTP, I/O error or cancellation
+     */
+    public byte[] getModelContent(String accessToken, String contentUrl, CancelSignal cancel)
+            throws ApiException {
         try {
             var builder = HttpRequest.newBuilder()
                     .uri(URI.create(contentUrl))
+                    .timeout(TRANSFER_TIMEOUT)
                     .GET();
             if (accessToken != null && !accessToken.isEmpty()) {
                 builder.header(AUTHORIZATION, BEARER_PREFIX + accessToken);
             }
             var request = builder.build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            var response = sendCancelable(request, HttpResponse.BodyHandlers.ofByteArray(), cancel);
             checkStatus(response.statusCode(), contentUrl);
             return response.body();
         } catch (ApiException e) {
@@ -145,17 +174,37 @@ public class ArchiteezyClient {
      */
     public RemoteModel exportModel(String serverUrl, String accessToken, String projectId, String fileName,
             byte[] content) throws ApiException {
+        return exportModel(serverUrl, accessToken, projectId, fileName, content, CancelSignal.NEVER);
+    }
+
+    /**
+     * Uploads a model file to the server as a multipart POST, aborting the
+     * transfer if {@code cancel} fires.
+     *
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param projectId target project identifier
+     * @param fileName file name for the uploaded model
+     * @param content raw ArchiMate file bytes
+     * @param cancel cooperative cancellation signal
+     * @return metadata of the newly created remote model
+     * @throws ApiException on HTTP, I/O error or cancellation
+     */
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public RemoteModel exportModel(String serverUrl, String accessToken, String projectId, String fileName,
+            byte[] content, CancelSignal cancel) throws ApiException {
         var url = serverUrl + "/api/models"; //$NON-NLS-1$
         var boundary = "----ArchiteezyBoundary" + Long.toHexString(System.currentTimeMillis()); //$NON-NLS-1$
         var body = buildMultipart(boundary, projectId, fileName, content);
         try {
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(TRANSFER_TIMEOUT)
                     .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
                     .header(CONTENT_TYPE, "multipart/form-data; boundary=" + boundary) //$NON-NLS-1$
                     .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                     .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = sendCancelable(request, HttpResponse.BodyHandlers.ofString(), cancel);
             checkStatus(response.statusCode(), url);
             var responseBody = response.body();
             if (responseBody != null && responseBody.contains("\"_links\"")) { //$NON-NLS-1$
@@ -230,6 +279,7 @@ public class ArchiteezyClient {
         try {
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(REQUEST_TIMEOUT)
                     .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
                     .header(CONTENT_TYPE, "application/json") //$NON-NLS-1$
                     .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -259,15 +309,33 @@ public class ArchiteezyClient {
      * @throws ApiException on HTTP or I/O error
      */
     public RemoteModel pushModelContent(String accessToken, String modelUrl, byte[] content) throws ApiException {
+        return pushModelContent(accessToken, modelUrl, content, CancelSignal.NEVER);
+    }
+
+    /**
+     * Uploads new ArchiMate content, aborting the transfer if {@code cancel}
+     * fires.
+     *
+     * @param accessToken OAuth2 bearer token
+     * @param modelUrl HAL self link URL of the model
+     * @param content new raw ArchiMate file bytes
+     * @param cancel cooperative cancellation signal
+     * @return updated model metadata parsed from the PUT response, or
+     *         {@code null} if the server did not return a parseable body
+     * @throws ApiException on HTTP, I/O error or cancellation
+     */
+    public RemoteModel pushModelContent(String accessToken, String modelUrl, byte[] content, CancelSignal cancel)
+            throws ApiException {
         var url = modelUrl + "/content?format=archimate"; //$NON-NLS-1$
         try {
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(TRANSFER_TIMEOUT)
                     .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
                     .header(CONTENT_TYPE, "application/octet-stream") //$NON-NLS-1$
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
                     .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = sendCancelable(request, HttpResponse.BodyHandlers.ofString(), cancel);
             checkStatus(response.statusCode(), url);
             var body = response.body();
             if (body != null && body.contains("\"lastModificationDateTime\"")) { //$NON-NLS-1$
@@ -295,6 +363,7 @@ public class ArchiteezyClient {
         try {
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(modelUrl))
+                    .timeout(REQUEST_TIMEOUT)
                     .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
                     .DELETE()
                     .build();
@@ -317,6 +386,7 @@ public class ArchiteezyClient {
         try {
             var builder = HttpRequest.newBuilder()
                     .uri(URI.create(url))
+                    .timeout(REQUEST_TIMEOUT)
                     .header("Accept", "application/json") //$NON-NLS-1$ //$NON-NLS-2$
                     .GET();
             if (accessToken != null && !accessToken.isEmpty()) {
@@ -333,6 +403,51 @@ public class ArchiteezyClient {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+        }
+    }
+
+    private <T> HttpResponse<T> sendCancelable(HttpRequest request, HttpResponse.BodyHandler<T> handler,
+            CancelSignal cancel) throws IOException, InterruptedException {
+        if (cancel == null || cancel == CancelSignal.NEVER) {
+            return http.send(request, handler);
+        }
+        var future = http.sendAsync(request, handler);
+        var watcher = new Thread(() -> pollCancel(future, cancel), "ArchiteezyCancelWatcher"); //$NON-NLS-1$
+        watcher.setDaemon(true);
+        watcher.start();
+        try {
+            return future.get();
+        } catch (CancellationException e) {
+            throw new InterruptedException("HTTP transfer cancelled"); //$NON-NLS-1$
+        } catch (ExecutionException e) {
+            var cause = e.getCause();
+            if (cause instanceof IOException io) {
+                throw io;
+            }
+            if (cause instanceof InterruptedException ie) {
+                throw ie;
+            }
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new IOException(cause == null ? e.getMessage() : cause.getMessage(), cause);
+        } finally {
+            watcher.interrupt();
+        }
+    }
+
+    private static void pollCancel(java.util.concurrent.CompletableFuture<?> future, CancelSignal cancel) {
+        while (!future.isDone()) {
+            if (cancel.isCanceled()) {
+                future.cancel(true);
+                return;
+            }
+            try {
+                Thread.sleep(CANCEL_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 

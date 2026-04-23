@@ -71,8 +71,9 @@ public class OAuthManager implements IOAuthManager {
         if (s != null && !s.isClosed()) {
             try {
                 s.close();
-            } catch (IOException ignored) {
-                // intentional: best-effort close during cancellation
+            } catch (IOException e) {
+                Platform.getLog(OAuthManager.class)
+                        .warn("Failed to close OAuth redirect socket during cancellation", e); //$NON-NLS-1$
             }
         }
     }
