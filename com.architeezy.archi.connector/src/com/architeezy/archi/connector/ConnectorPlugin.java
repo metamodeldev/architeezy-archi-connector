@@ -9,16 +9,19 @@
  */
 package com.architeezy.archi.connector;
 
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.equinox.security.storage.SecurePreferencesFactory;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
-import com.architeezy.archi.connector.services.LocalChangeService;
-import com.architeezy.archi.connector.services.UpdateCheckService;
-import com.architeezy.archi.connector.ui.navigator.ModelTreeDecorator;
-
 /**
  * OSGi bundle activator for the Architeezy connector plugin.
+ *
+ * Builds the {@link ConnectorServices} composition root in {@link #start} and
+ * exposes it via {@link #services()} for UI code (handlers, wizards, navigator)
+ * that needs to look up services. Services themselves never go through the
+ * plugin - they receive their collaborators via constructor injection.
  */
 public class ConnectorPlugin extends AbstractUIPlugin {
 
@@ -26,6 +29,8 @@ public class ConnectorPlugin extends AbstractUIPlugin {
     public static final String PLUGIN_ID = "com.architeezy.archi.connector"; //$NON-NLS-1$
 
     private static ConnectorPlugin instance;
+
+    private ConnectorServices services;
 
     /** Creates the plugin instance. */
     public ConnectorPlugin() {
@@ -41,19 +46,35 @@ public class ConnectorPlugin extends AbstractUIPlugin {
         return instance;
     }
 
+    /**
+     * Returns the plugin's service composition root.
+     *
+     * @return the service graph
+     */
+    public ConnectorServices services() {
+        return services;
+    }
+
     @Override
     public void start(BundleContext context) throws Exception {
         super.start(context);
         setInstance(this);
-        UpdateCheckService.INSTANCE.start();
-        LocalChangeService.INSTANCE.start();
+        services = new ConnectorServices(
+                () -> Platform.getStateLocation(context.getBundle()).toFile().toPath(),
+                getPreferenceStore(),
+                SecurePreferencesFactory::getDefault);
+        services.updateCheckService().start();
+        services.localChangeService().start();
     }
 
     @Override
     public void stop(BundleContext context) throws Exception {
-        ModelTreeDecorator.INSTANCE.uninstall();
-        UpdateCheckService.INSTANCE.stop();
-        LocalChangeService.INSTANCE.stop();
+        if (services != null) {
+            services.modelTreeDecorator().uninstall();
+            services.updateCheckService().stop();
+            services.localChangeService().stop();
+            services = null;
+        }
         setInstance(null);
         super.stop(context);
     }

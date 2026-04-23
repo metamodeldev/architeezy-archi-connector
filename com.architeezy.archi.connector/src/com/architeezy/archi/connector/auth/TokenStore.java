@@ -12,21 +12,16 @@ package com.architeezy.archi.connector.auth;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.function.Supplier;
 
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.equinox.security.storage.ISecurePreferences;
-import org.eclipse.equinox.security.storage.SecurePreferencesFactory;
 import org.eclipse.equinox.security.storage.StorageException;
-
-import com.architeezy.archi.connector.ConnectorPlugin;
 
 /**
  * Persists OAuth tokens in the Eclipse Equinox secure preferences store.
  */
-@SuppressWarnings("java:S6548")
-public final class TokenStore {
-
-    /** The singleton instance. */
-    public static final TokenStore INSTANCE = new TokenStore();
+public class TokenStore {
 
     private static final String NODE_ROOT = "/com/architeezy/archi/connector/profiles/"; //$NON-NLS-1$
 
@@ -36,7 +31,15 @@ public final class TokenStore {
 
     private static final String KEY_EXPIRES = "expires_at"; //$NON-NLS-1$
 
-    private TokenStore() {
+    private final Supplier<ISecurePreferences> rootNode;
+
+    /**
+     * Creates a new token store backed by the given secure-preferences root.
+     *
+     * @param rootNode supplier of the root {@link ISecurePreferences} node
+     */
+    public TokenStore(Supplier<ISecurePreferences> rootNode) {
+        this.rootNode = rootNode;
     }
 
     /**
@@ -49,7 +52,7 @@ public final class TokenStore {
         try {
             return node(serverUrl).get(KEY_ACCESS, null);
         } catch (StorageException e) {
-            ConnectorPlugin.getInstance().getLog().error("Failed to read access token", e); //$NON-NLS-1$
+            Platform.getLog(TokenStore.class).error("Failed to read access token", e); //$NON-NLS-1$
             return null;
         }
     }
@@ -64,7 +67,7 @@ public final class TokenStore {
         try {
             return node(serverUrl).get(KEY_REFRESH, null);
         } catch (StorageException e) {
-            ConnectorPlugin.getInstance().getLog().error("Failed to read refresh token", e); //$NON-NLS-1$
+            Platform.getLog(TokenStore.class).error("Failed to read refresh token", e); //$NON-NLS-1$
             return null;
         }
     }
@@ -101,7 +104,7 @@ public final class TokenStore {
             n.put(KEY_EXPIRES, String.valueOf(expiresAt), false);
             n.flush();
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog().error("Failed to save tokens", e); //$NON-NLS-1$
+            Platform.getLog(TokenStore.class).error("Failed to save tokens", e); //$NON-NLS-1$
         }
     }
 
@@ -118,15 +121,15 @@ public final class TokenStore {
             n.remove(KEY_EXPIRES);
             n.flush();
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog().error("Failed to clear tokens", e); //$NON-NLS-1$
+            Platform.getLog(TokenStore.class).error("Failed to clear tokens", e); //$NON-NLS-1$
         }
     }
 
     private ISecurePreferences node(String serverUrl) {
-        return SecurePreferencesFactory.getDefault().node(NODE_ROOT + sha1(serverUrl));
+        return rootNode.get().node(NODE_ROOT + sha1(serverUrl));
     }
 
-    private static String sha1(String input) {
+    static String sha1(String input) {
         try {
             var md = MessageDigest.getInstance("SHA-1"); //$NON-NLS-1$
             var hash = md.digest(input.getBytes(StandardCharsets.UTF_8));

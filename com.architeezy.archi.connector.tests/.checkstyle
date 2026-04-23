@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fileset-config file-format-version="1.2.0" simple-config="false" sync-formatter="false">
+  <local-check-config name="maven-checkstyle-plugin checkstyle" location="/architeezy-settings/checkstyle-config.xml" type="project" description="">
+    <additional-data name="protect-config-file" value="true"/>
+  </local-check-config>
+  <fileset name="java-sources-validate" enabled="true" check-config-name="maven-checkstyle-plugin checkstyle" local="true">
+    <file-match-pattern match-pattern="^src/" include-pattern="true"/>
+    <file-match-pattern match-pattern="\.gitkeep" include-pattern="false"/>
+    <file-match-pattern match-pattern=".*\.(gif|png)" include-pattern="false"/>
+  </fileset>
+</fileset-config>

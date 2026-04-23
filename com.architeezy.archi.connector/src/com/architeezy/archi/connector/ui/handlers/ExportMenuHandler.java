@@ -24,9 +24,9 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 import com.archimatetool.model.IArchimateModel;
-import com.archimatetool.model.IArchimateModelObject;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.model.ConnectorProperties;
+import com.architeezy.archi.connector.model.Models;
 import com.architeezy.archi.connector.ui.wizards.ExportWizard;
 
 /**
@@ -93,22 +93,11 @@ public class ExportMenuHandler extends AbstractHandler {
         return modelFromSelection(w.getSelectionService().getSelection());
     }
 
-    private static IArchimateModel modelFromSelection(ISelection selection) {
+    static IArchimateModel modelFromSelection(ISelection selection) {
         if (!(selection instanceof IStructuredSelection ss) || ss.isEmpty()) {
             return null;
         }
-        for (var element : ss.toList()) {
-            IArchimateModel model = null;
-            if (element instanceof IArchimateModel m) {
-                model = m;
-            } else if (element instanceof IArchimateModelObject obj) {
-                model = obj.getArchimateModel();
-            }
-            if (model != null && !ConnectorProperties.isTracked(model)) {
-                return model;
-            }
-        }
-        return null;
+        return Models.firstUntrackedModel(ss.toList());
     }
 
     private void hookSelectionListener() {

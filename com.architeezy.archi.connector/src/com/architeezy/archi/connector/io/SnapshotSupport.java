@@ -10,16 +10,28 @@
 package com.architeezy.archi.connector.io;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.Platform;
 
 import com.archimatetool.model.IArchimateModel;
-import com.architeezy.archi.connector.ConnectorPlugin;
 
 /**
  * Shared snapshot-writing helpers used after import, export, pull, and push.
  */
 public final class SnapshotSupport {
 
-    private SnapshotSupport() {
+    private final ModelSerializer serializer;
+
+    private final SnapshotStore store;
+
+    /**
+     * Creates a helper that writes snapshots using the given serializer and store.
+     *
+     * @param serializer serializer used to produce model bytes
+     * @param store store that persists the snapshot bytes
+     */
+    public SnapshotSupport(ModelSerializer serializer, SnapshotStore store) {
+        this.serializer = serializer;
+        this.store = store;
     }
 
     /**
@@ -32,16 +44,16 @@ public final class SnapshotSupport {
      * @param modelId the repository model identifier
      * @param monitor progress monitor
      */
-    public static void saveSnapshotAfterConfigure(IArchimateModel model, String modelId,
+    public void saveSnapshotAfterConfigure(IArchimateModel model, String modelId,
             IProgressMonitor monitor) {
         if (monitor != null) {
             monitor.subTask("Saving snapshot"); //$NON-NLS-1$
         }
         try {
-            var bytes = ModelSerializer.INSTANCE.serialize(model);
-            SnapshotStore.INSTANCE.saveSnapshot(modelId, bytes);
+            var bytes = serializer.serialize(model);
+            store.saveSnapshot(modelId, bytes);
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog().error("Failed to save initial snapshot", e); //$NON-NLS-1$
+            Platform.getLog(SnapshotSupport.class).error("Failed to save initial snapshot", e); //$NON-NLS-1$
         }
     }
 

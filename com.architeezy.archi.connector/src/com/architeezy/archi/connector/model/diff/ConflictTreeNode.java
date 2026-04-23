@@ -7,8 +7,9 @@
  *
  * SPDX-License-Identifier: EPL-2.0
  */
-package com.architeezy.archi.connector.ui.dialogs;
+package com.architeezy.archi.connector.model.diff;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.emf.compare.ConflictKind;
@@ -70,6 +71,46 @@ public record ConflictTreeNode(
             return true;
         }
         return children.stream().anyMatch(ConflictTreeNode::hasAnyChange);
+    }
+
+    /**
+     * Returns the children of this node that should be visible given the view
+     * mode.
+     *
+     * <p>
+     * When {@code showAll} is {@code true} all children are returned. When it
+     * is {@code false}, only children that have a conflict somewhere in their
+     * subtree are returned, so the tree shows only the conflict-relevant
+     * structure.
+     *
+     * @param showAll if {@code true} return all children; if {@code false}
+     *         return only children with a conflict in their subtree
+     * @return the filtered list of visible children (never {@code null})
+     */
+    public List<ConflictTreeNode> visibleChildren(boolean showAll) {
+        if (showAll) {
+            return children;
+        }
+        return children.stream().filter(ConflictTreeNode::hasConflictInSubtree).toList();
+    }
+
+    /**
+     * Recursively collects every node in {@code nodes} (and their descendants)
+     * that participates in a {@link ConflictKind#REAL REAL} conflict. Traversal
+     * is depth-first pre-order.
+     *
+     * @param nodes the root nodes to walk
+     * @return a new list of conflicting nodes in depth-first pre-order
+     */
+    public static List<ConflictTreeNode> collectConflictNodes(List<ConflictTreeNode> nodes) {
+        var result = new ArrayList<ConflictTreeNode>();
+        for (var node : nodes) {
+            if (node.isConflict()) {
+                result.add(node);
+            }
+            result.addAll(collectConflictNodes(node.children()));
+        }
+        return result;
     }
 
     private static boolean isRealConflictDiff(Diff diff) {

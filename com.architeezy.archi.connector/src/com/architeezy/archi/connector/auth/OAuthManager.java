@@ -31,7 +31,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-import com.architeezy.archi.connector.ConnectorPlugin;
+import org.eclipse.core.runtime.Platform;
 
 /**
  * Implements the OAuth 2.0 Authorization Code + PKCE flow.
@@ -40,7 +40,7 @@ import com.architeezy.archi.connector.ConnectorPlugin;
  * needed beyond http://127.0.0.1:{dynamicPort}/callback.
  */
 @SuppressWarnings("checkstyle:MagicNumber")
-public class OAuthManager {
+public class OAuthManager implements IOAuthManager {
 
     private static final int TIMEOUT_MS = 300_000; // 5 minutes
 
@@ -64,6 +64,7 @@ public class OAuthManager {
     /**
      * Signals the in-progress login to abort and closes the redirect server socket.
      */
+    @Override
     public void cancelLogin() {
         loginCancelled = true;
         var s = activeServer;
@@ -86,6 +87,7 @@ public class OAuthManager {
      * @return the obtained token response, or an empty {@link Optional} if the user cancelled
      * @throws OAuthException if the flow fails or times out
      */
+    @Override
     public Optional<TokenResponse> login(String serverUrl, String clientId, String authEndpoint, String tokenEndpoint)
             throws OAuthException {
         loginCancelled = false;
@@ -133,7 +135,7 @@ public class OAuthManager {
         }
     }
 
-    private static void validateUrl(String url, String fieldName) throws OAuthException {
+    static void validateUrl(String url, String fieldName) throws OAuthException {
         try {
             URI.create(url).toURL();
         } catch (MalformedURLException e) {
@@ -150,6 +152,7 @@ public class OAuthManager {
      * @return the new token response
      * @throws OAuthException if the refresh request fails
      */
+    @Override
     public TokenResponse refreshToken(String tokenEndpoint, String clientId, String refreshToken)
             throws OAuthException {
         var body = "grant_type=refresh_token" //$NON-NLS-1$
@@ -248,7 +251,7 @@ public class OAuthManager {
         }
     }
 
-    private TokenResponse parseTokenResponse(String json) throws OAuthException {
+    static TokenResponse parseTokenResponse(String json) throws OAuthException {
         var accessToken = extractJsonString(json, "access_token"); //$NON-NLS-1$
         var refreshToken = extractJsonString(json, "refresh_token"); //$NON-NLS-1$
         var expiresIn = extractJsonLong(json, "expires_in", 3600); //$NON-NLS-1$
@@ -263,13 +266,13 @@ public class OAuthManager {
     // -----------------------------------------------------------------------
     // PKCE helpers
 
-    private static String generateCodeVerifier() {
+    static String generateCodeVerifier() {
         var bytes = new byte[32];
         new SecureRandom().nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private static String generateCodeChallenge(String verifier) {
+    static String generateCodeChallenge(String verifier) {
         try {
             var md = MessageDigest.getInstance("SHA-256"); //$NON-NLS-1$
             var hash = md.digest(verifier.getBytes(StandardCharsets.US_ASCII));
@@ -279,7 +282,7 @@ public class OAuthManager {
         }
     }
 
-    private static String generateState() {
+    static String generateState() {
         var bytes = new byte[16];
         new SecureRandom().nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -296,7 +299,7 @@ public class OAuthManager {
                     .getExternalBrowser()
                     .openURL(URI.create(url).toURL());
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog().error("Failed to open browser", e); //$NON-NLS-1$
+            Platform.getLog(OAuthManager.class).error("Failed to open browser", e); //$NON-NLS-1$
         }
     }
 
@@ -306,7 +309,7 @@ public class OAuthManager {
      * @param path the request path including the query string
      * @return map of decoded query parameter names to values
      */
-    private static Map<String, String> parseQueryParams(String path) {
+    static Map<String, String> parseQueryParams(String path) {
         var map = new HashMap<String, String>();
         var q = path.indexOf('?');
         if (q < 0) {

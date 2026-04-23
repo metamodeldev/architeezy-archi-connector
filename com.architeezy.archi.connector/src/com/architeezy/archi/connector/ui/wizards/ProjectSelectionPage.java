@@ -31,10 +31,9 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Text;
 
+import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.api.dto.RemoteProject;
-import com.architeezy.archi.connector.auth.ProfileRegistry;
-import com.architeezy.archi.connector.services.RepositoryService;
 
 /**
  * Wizard page for selecting the target project during model export.
@@ -103,7 +102,7 @@ public class ProjectSelectionPage extends WizardPage {
     // -----------------------------------------------------------------------
 
     private void loadProjects() {
-        var profile = ProfileRegistry.INSTANCE.getActiveProfile();
+        var profile = ConnectorPlugin.getInstance().services().profileRegistry().getActiveProfile();
         if (profile == null) {
             setMessage(Messages.ProjectPage_noProfile, ERROR);
             return;
@@ -118,7 +117,7 @@ public class ProjectSelectionPage extends WizardPage {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
                 try {
-                    var projects = RepositoryService.INSTANCE.listProjects(profile);
+                    var projects = ConnectorPlugin.getInstance().services().repositoryService().listProjects(profile);
                     Display.getDefault().asyncExec(() -> updateUiWithProjects(projects));
                 } catch (Exception ex) {
                     Display.getDefault().asyncExec(() -> {

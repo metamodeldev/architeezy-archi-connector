@@ -51,6 +51,9 @@ import com.archimatetool.editor.ui.ArchiLabelProvider;
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.io.ModelSerializer;
+import com.architeezy.archi.connector.model.diff.ConflictTreeNode;
+import com.architeezy.archi.connector.model.diff.DiffFormatter;
+import com.architeezy.archi.connector.model.diff.Resolution;
 
 /**
  * A simplified conflict-resolution dialog showing the model tree with three
@@ -68,15 +71,6 @@ import com.architeezy.archi.connector.io.ModelSerializer;
 @SuppressWarnings("checkstyle:ClassDataAbstractionCoupling")
 public class ConflictResolutionDialog extends Dialog {
 
-    /** Resolution choice for a single conflicting tree node. */
-    public enum Resolution {
-        /** Retain the local version of the conflicting element. */
-        LOCAL,
-
-        /** Accept the remote version of the conflicting element. */
-        REMOTE
-    }
-
     private static final String CHECKMARK = "\u2714 ";
 
     private final Comparison comparison;
@@ -84,6 +78,8 @@ public class ConflictResolutionDialog extends Dialog {
     private final Resource localResource;
 
     private final IMerger.Registry mergerRegistry;
+
+    private final ModelSerializer serializer;
 
     private TreeViewer treeViewer;
 
@@ -104,16 +100,17 @@ public class ConflictResolutionDialog extends Dialog {
      *
      * @param parent the parent shell
      * @param comparison the EMF Compare result (left = local copy, right = remote)
-     * @param localResource the resource backing the local model copy; will be
-     *        modified in-place on OK
+     * @param localResource the local model resource, modified in-place on OK
      * @param mergerRegistry the merger registry used to apply diffs
+     * @param serializer model serializer used to emit merged bytes on OK
      */
-    public ConflictResolutionDialog(Shell parent, Comparison comparison,
-            Resource localResource, IMerger.Registry mergerRegistry) {
+    public ConflictResolutionDialog(Shell parent, Comparison comparison, Resource localResource,
+            IMerger.Registry mergerRegistry, ModelSerializer serializer) {
         super(parent);
         this.comparison = comparison;
         this.localResource = localResource;
         this.mergerRegistry = mergerRegistry;
+        this.serializer = serializer;
         setShellStyle(getShellStyle() | SWT.RESIZE);
     }
 
@@ -153,7 +150,7 @@ public class ConflictResolutionDialog extends Dialog {
 
         treeViewer.setContentProvider(new ConflictTreeContentProvider(() -> showAllChanges));
         allRoots = buildAllNodes();
-        conflictNodes = collectConflictNodes(allRoots);
+        conflictNodes = ConflictTreeNode.collectConflictNodes(allRoots);
         treeViewer.setInput(filteredRoots());
         treeViewer.expandAll();
 
@@ -191,7 +188,7 @@ public class ConflictResolutionDialog extends Dialog {
         });
     }
 
-    private static Resolution resolutionForColumn(int columnIndex) {
+    static Resolution resolutionForColumn(int columnIndex) {
         if (columnIndex == 1) {
             return Resolution.LOCAL;
         }
@@ -258,7 +255,7 @@ public class ConflictResolutionDialog extends Dialog {
         try {
             applyResolutions();
             var model = (IArchimateModel) localResource.getContents().get(0);
-            mergedContent = ModelSerializer.INSTANCE.serialize(model);
+            mergedContent = serializer.serialize(model);
         } catch (Exception e) {
             mergeError = e;
         }
@@ -345,17 +342,6 @@ public class ConflictResolutionDialog extends Dialog {
 
         return new ConflictTreeNode(element, DiffFormatter.extractLabel(element), localDiffs, remoteDiffs, children,
                 addedLocal, addedRemote, deletedLocal, deletedRemote);
-    }
-
-    private static List<ConflictTreeNode> collectConflictNodes(List<ConflictTreeNode> nodes) {
-        var result = new ArrayList<ConflictTreeNode>();
-        for (var node : nodes) {
-            if (node.isConflict()) {
-                result.add(node);
-            }
-            result.addAll(collectConflictNodes(node.children()));
-        }
-        return result;
     }
 
     // -------------------------------------------------------------------------
@@ -476,20 +462,13 @@ public class ConflictResolutionDialog extends Dialog {
         }
 
         private String getStructuralChangeLabel(ConflictTreeNode node) {
-            if (side == Resolution.LOCAL) {
-                if (node.addedLocal()) {
-                    return Messages.ConflictDialog_changeAdded;
-                }
-                if (node.deletedLocal()) {
-                    return Messages.ConflictDialog_changeDeleted;
-                }
-            } else {
-                if (node.addedRemote()) {
-                    return Messages.ConflictDialog_changeAdded;
-                }
-                if (node.deletedRemote()) {
-                    return Messages.ConflictDialog_changeDeleted;
-                }
+            var added = side == Resolution.LOCAL ? node.addedLocal() : node.addedRemote();
+            if (added) {
+                return Messages.ConflictDialog_changeAdded;
+            }
+            var deleted = side == Resolution.LOCAL ? node.deletedLocal() : node.deletedRemote();
+            if (deleted) {
+                return Messages.ConflictDialog_changeDeleted;
             }
             return "";
         }

@@ -15,6 +15,7 @@ import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.IJobFunction;
 import org.eclipse.core.runtime.jobs.Job;
@@ -33,9 +34,6 @@ import com.architeezy.archi.connector.services.ModelSyncService;
 /**
  * Toolbar handler that uploads the active model's local changes to the
  * Architeezy server, pulling any remote updates first if necessary.
- *
- * <p>Enabled when any active editor or navigator-selected tracked model has
- * local changes relative to its base snapshot.
  */
 public class PushHandler extends AbstractTrackedModelHandler {
 
@@ -43,19 +41,27 @@ public class PushHandler extends AbstractTrackedModelHandler {
 
     /** Creates the handler and subscribes to local change notifications. */
     public PushHandler() {
-        LocalChangeService.INSTANCE.addListener(changeListener);
+        localChangeService().addListener(changeListener);
+    }
+
+    private static LocalChangeService localChangeService() {
+        return ConnectorPlugin.getInstance().services().localChangeService();
+    }
+
+    private static ModelSyncService modelSyncService() {
+        return ConnectorPlugin.getInstance().services().modelSyncService();
     }
 
     @Override
     protected boolean isEnabledForModel(IArchimateModel model) {
-        return LocalChangeService.INSTANCE.hasLocalChanges(model);
+        return localChangeService().hasLocalChanges(model);
     }
 
     @Override
     @SuppressWarnings("java:S3516")
     public Object execute(ExecutionEvent event) throws ExecutionException {
         var shell = HandlerUtil.getActiveShell(event);
-        var model = getTargetModel(LocalChangeService.INSTANCE::hasLocalChanges);
+        var model = getTargetModel(localChangeService()::hasLocalChanges);
         if (model == null) {
             MessageDialog.openInformation(shell, Messages.PushHandler_title, Messages.PushHandler_noModel);
             return null;
@@ -63,7 +69,7 @@ public class PushHandler extends AbstractTrackedModelHandler {
         try {
             IEditorModelManager.INSTANCE.saveModel(model);
         } catch (java.io.IOException e) {
-            ConnectorPlugin.getInstance().getLog().error("Save before push failed", e); //$NON-NLS-1$
+            Platform.getLog(PushHandler.class).error("Save before push failed", e); //$NON-NLS-1$
             MessageDialog.openError(shell, Messages.PushHandler_title,
                     MessageFormat.format(Messages.PushHandler_failed, e.getMessage()));
             return null;
@@ -80,18 +86,18 @@ public class PushHandler extends AbstractTrackedModelHandler {
 
     @Override
     public void dispose() {
-        LocalChangeService.INSTANCE.removeListener(changeListener);
+        localChangeService().removeListener(changeListener);
         super.dispose();
     }
 
     private static IStatus executePushJob(IArchimateModel model, Shell shell, IProgressMonitor monitor) {
         var status = Status.OK_STATUS;
         try {
-            ModelSyncService.INSTANCE.pushModel(model, monitor);
+            modelSyncService().pushModel(model, monitor);
             Display.getDefault().asyncExec(() -> MessageDialog.openInformation(shell,
                     Messages.PushHandler_title, Messages.PushHandler_success));
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog().error("Push failed", e); //$NON-NLS-1$
+            Platform.getLog(PushHandler.class).error("Push failed", e); //$NON-NLS-1$
             status = Status.error(MessageFormat.format(Messages.PushHandler_failed, e.getMessage()), e);
             Display.getDefault().asyncExec(() -> MessageDialog.openError(shell, Messages.PushHandler_title,
                     MessageFormat.format(Messages.PushHandler_failed, e.getMessage())));

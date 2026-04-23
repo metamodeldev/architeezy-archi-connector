@@ -12,24 +12,28 @@ package com.architeezy.archi.connector.io;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.function.Supplier;
 
 import org.eclipse.core.runtime.Platform;
-
-import com.architeezy.archi.connector.ConnectorPlugin;
 
 /**
  * Stores base snapshots of synchronized models in the plugin's state location.
  *
  * Snapshots are used as the "base" in 3-way merges and for rollback on failure.
- * Location: Platform.getStateLocation(bundle)/snapshots/{modelId}.archimate
+ * Location: {stateLocation}/snapshots/{modelId}.archimate
  */
-@SuppressWarnings("java:S6548")
 public final class SnapshotStore {
 
-    /** The singleton instance of SnapshotStore. */
-    public static final SnapshotStore INSTANCE = new SnapshotStore();
+    private final Supplier<Path> stateLocation;
 
-    private SnapshotStore() {
+    /**
+     * Creates a new store that resolves files under {@code stateLocation}.
+     *
+     * @param stateLocation supplier of the base directory for snapshot files
+     */
+    public SnapshotStore(Supplier<Path> stateLocation) {
+        this.stateLocation = stateLocation;
     }
 
     /**
@@ -88,29 +92,16 @@ public final class SnapshotStore {
         try {
             Files.deleteIfExists(snapshotFile(modelId).toPath());
         } catch (IOException e) {
-            ConnectorPlugin.getInstance().getLog()
+            Platform.getLog(SnapshotStore.class)
                     .warn("Failed to delete snapshot for " + modelId, e); //$NON-NLS-1$
         }
     }
 
-    /**
-     * Resolves the snapshot file for the given model identifier.
-     *
-     * @param modelId the model identifier
-     * @return the file object pointing to the snapshot
-     */
     private File snapshotFile(String modelId) {
-        File stateLocation = Platform.getStateLocation(
-                Platform.getBundle(ConnectorPlugin.PLUGIN_ID)).toFile();
-        return new File(stateLocation, "snapshots/" + sanitize(modelId) + ".archimate"); //$NON-NLS-1$ //$NON-NLS-2$
+        return new File(stateLocation.get().toFile(),
+                "snapshots/" + sanitize(modelId) + ".archimate"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
-    /**
-     * Strips characters that are illegal in file names.
-     *
-     * @param modelId the model identifier to sanitize
-     * @return the sanitized model identifier
-     */
     private static String sanitize(String modelId) {
         return modelId.replaceAll("[^a-zA-Z0-9_\\-]", "_"); //$NON-NLS-1$ //$NON-NLS-2$
     }

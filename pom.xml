@@ -14,6 +14,7 @@
 
     <modules>
         <module>com.architeezy.archi.connector</module>
+        <module>com.architeezy.archi.connector.tests</module>
         <module>com.architeezy.archi.connector.feature</module>
         <module>com.architeezy.archi.connector.repository</module>
         <module>com.architeezy.archi.connector.target</module>
@@ -40,28 +41,6 @@
                             <version>1.0.0-SNAPSHOT</version>
                         </artifact>
                     </target>
-                    <environments>
-                        <environment>
-                            <os>win32</os>
-                            <ws>win32</ws>
-                            <arch>x86_64</arch>
-                        </environment>
-                        <environment>
-                            <os>linux</os>
-                            <ws>gtk</ws>
-                            <arch>x86_64</arch>
-                        </environment>
-                        <environment>
-                            <os>macosx</os>
-                            <ws>cocoa</ws>
-                            <arch>x86_64</arch>
-                        </environment>
-                        <environment>
-                            <os>macosx</os>
-                            <ws>cocoa</ws>
-                            <arch>aarch64</arch>
-                        </environment>
-                    </environments>
                 </configuration>
             </plugin>
             <plugin>
@@ -85,6 +64,7 @@
                 </dependencies>
                 <configuration>
                     <configLocation>${maven.multiModuleProjectDirectory}/architeezy-settings/checkstyle-config.xml</configLocation>
+                    <propertyExpansion>config_loc=${maven.multiModuleProjectDirectory}/architeezy-settings</propertyExpansion>
                     <consoleOutput>true</consoleOutput>
                     <failsOnError>true</failsOnError>
                     <violationSeverity>error</violationSeverity>

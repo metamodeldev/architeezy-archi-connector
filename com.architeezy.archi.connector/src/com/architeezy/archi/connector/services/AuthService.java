@@ -15,8 +15,8 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 import com.architeezy.archi.connector.auth.ConnectionProfile;
+import com.architeezy.archi.connector.auth.IOAuthManager;
 import com.architeezy.archi.connector.auth.OAuthException;
-import com.architeezy.archi.connector.auth.OAuthManager;
 import com.architeezy.archi.connector.auth.ProfileRegistry;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.auth.TokenStore;
@@ -29,19 +29,31 @@ import com.architeezy.archi.connector.auth.TokenStore;
  * Thread-safety: token refresh uses a per-profile lock to ensure only one
  * refresh request is in-flight at a time.
  */
-@SuppressWarnings("java:S6548")
+@SuppressWarnings("java:S112")
 public final class AuthService {
-
-    /** The singleton instance of AuthService. */
-    public static final AuthService INSTANCE = new AuthService();
 
     private static final long REFRESH_MARGIN_SECONDS = 60;
 
+    private final IOAuthManager oauth;
+
+    private final TokenStore tokenStore;
+
+    private final ProfileRegistry profileRegistry;
+
     private final Map<String, ReentrantLock> refreshLocks = new HashMap<>();
 
-    private final OAuthManager oauth = new OAuthManager();
-
-    private AuthService() {
+    /**
+     * Creates a new auth service backed by the given collaborators.
+     *
+     * @param oauth the OAuth manager used for login/refresh HTTP flows
+     * @param tokenStore secure storage for access/refresh tokens
+     * @param profileRegistry registry that resolves auth/token endpoints by profile
+     *        name
+     */
+    public AuthService(IOAuthManager oauth, TokenStore tokenStore, ProfileRegistry profileRegistry) {
+        this.oauth = oauth;
+        this.tokenStore = tokenStore;
+        this.profileRegistry = profileRegistry;
     }
 
     // -----------------------------------------------------------------------
@@ -56,8 +68,8 @@ public final class AuthService {
     public void login(ConnectionProfile profile) throws OAuthException {
         profile.setStatus(ProfileStatus.CONNECTING);
         try {
-            var authEndpoint = ProfileRegistry.INSTANCE.getAuthEndpoint(profile.getName());
-            var tokenEndpoint = ProfileRegistry.INSTANCE.getTokenEndpoint(profile.getName());
+            var authEndpoint = profileRegistry.getAuthEndpoint(profile.getName());
+            var tokenEndpoint = profileRegistry.getTokenEndpoint(profile.getName());
 
             var tokens = oauth.login(
                     profile.getServerUrl(), profile.getClientId(),
@@ -69,7 +81,7 @@ public final class AuthService {
                 return;
             }
             var response = tokens.get();
-            TokenStore.INSTANCE.saveTokens(profile.getServerUrl(),
+            tokenStore.saveTokens(profile.getServerUrl(),
                     response.accessToken(), response.refreshToken(), response.expiresAt());
             profile.setStatus(ProfileStatus.CONNECTED);
         } catch (OAuthException e) {
@@ -84,7 +96,7 @@ public final class AuthService {
      * @param profile the profile to log out
      */
     public void logout(ConnectionProfile profile) {
-        TokenStore.INSTANCE.clearTokens(profile.getServerUrl());
+        tokenStore.clearTokens(profile.getServerUrl());
         profile.setStatus(ProfileStatus.DISCONNECTED);
     }
 
@@ -109,11 +121,11 @@ public final class AuthService {
     public String getValidAccessToken(ConnectionProfile profile) throws OAuthException {
         var serverUrl = profile.getServerUrl();
 
-        var expiresAt = TokenStore.INSTANCE.getExpiresAt(serverUrl);
+        var expiresAt = tokenStore.getExpiresAt(serverUrl);
         var now = Instant.now().getEpochSecond();
 
         if (expiresAt - now > REFRESH_MARGIN_SECONDS) {
-            var token = TokenStore.INSTANCE.getAccessToken(serverUrl);
+            var token = tokenStore.getAccessToken(serverUrl);
             if (token != null) {
                 return token;
             }
@@ -134,26 +146,26 @@ public final class AuthService {
         lock.lock();
         try {
             // Re-check after acquiring lock (another thread may have refreshed already)
-            var expiresAt = TokenStore.INSTANCE.getExpiresAt(serverUrl);
+            var expiresAt = tokenStore.getExpiresAt(serverUrl);
             var now = Instant.now().getEpochSecond();
             if (expiresAt - now > REFRESH_MARGIN_SECONDS) {
-                var token = TokenStore.INSTANCE.getAccessToken(serverUrl);
+                var token = tokenStore.getAccessToken(serverUrl);
                 if (token != null) {
                     return token;
                 }
             }
 
-            var refreshToken = TokenStore.INSTANCE.getRefreshToken(serverUrl);
+            var refreshToken = tokenStore.getRefreshToken(serverUrl);
             if (refreshToken == null) {
                 profile.setStatus(ProfileStatus.SESSION_EXPIRED);
                 throw new OAuthException("No refresh token available. Please sign in again."); //$NON-NLS-1$
             }
 
-            var tokenEndpoint = ProfileRegistry.INSTANCE.getTokenEndpoint(profile.getName());
+            var tokenEndpoint = profileRegistry.getTokenEndpoint(profile.getName());
 
             try {
                 var tokens = oauth.refreshToken(tokenEndpoint, profile.getClientId(), refreshToken);
-                TokenStore.INSTANCE.saveTokens(serverUrl, tokens.accessToken(), tokens.refreshToken(),
+                tokenStore.saveTokens(serverUrl, tokens.accessToken(), tokens.refreshToken(),
                         tokens.expiresAt());
                 profile.setStatus(ProfileStatus.CONNECTED);
                 return tokens.accessToken();

@@ -14,14 +14,16 @@ import java.util.function.BooleanSupplier;
 
 import org.eclipse.jface.viewers.ITreeContentProvider;
 
+import com.architeezy.archi.connector.model.diff.ConflictTreeNode;
+
 /**
  * Content provider for the conflict-resolution tree. The input is expected to
  * be a {@code List<ConflictTreeNode>} of root nodes.
  *
  * <p>
- * When {@code showAll} returns {@code false}, only nodes that have a conflict
- * somewhere in their subtree are exposed as children, so the tree shows only
- * the conflict-relevant structure.
+ * Filtering by conflict presence is handled by
+ * {@link ConflictTreeNode#visibleChildren(boolean)}; this class is just a
+ * JFace adapter over that logic.
  */
 public class ConflictTreeContentProvider implements ITreeContentProvider {
 
@@ -48,11 +50,7 @@ public class ConflictTreeContentProvider implements ITreeContentProvider {
     @Override
     public Object[] getChildren(Object parentElement) {
         if (parentElement instanceof ConflictTreeNode node) {
-            var stream = node.children().stream();
-            if (!showAll.getAsBoolean()) {
-                stream = stream.filter(ConflictTreeNode::hasConflictInSubtree);
-            }
-            return stream.toArray();
+            return node.visibleChildren(showAll.getAsBoolean()).toArray();
         }
         return new Object[0];
     }
@@ -65,10 +63,7 @@ public class ConflictTreeContentProvider implements ITreeContentProvider {
     @Override
     public boolean hasChildren(Object element) {
         if (element instanceof ConflictTreeNode node) {
-            if (showAll.getAsBoolean()) {
-                return !node.children().isEmpty();
-            }
-            return node.children().stream().anyMatch(ConflictTreeNode::hasConflictInSubtree);
+            return !node.visibleChildren(showAll.getAsBoolean()).isEmpty();
         }
         return false;
     }

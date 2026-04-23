@@ -15,19 +15,13 @@ import java.util.List;
 
 import org.eclipse.jface.preference.IPreferenceStore;
 
-import com.architeezy.archi.connector.ConnectorPlugin;
-
 /**
- * Owns the list of connection profiles and persists them via the Eclipse
+ * Owns the list of connection profiles and persists them via an Eclipse
  * preference store. Also exposes lookup helpers used by other services.
  *
  * Thread-safety: mutating methods are synchronized.
  */
-@SuppressWarnings("java:S6548")
-public final class ProfileRegistry {
-
-    /** The singleton instance. */
-    public static final ProfileRegistry INSTANCE = new ProfileRegistry();
+public class ProfileRegistry {
 
     private static final String PREF_PROFILES = "architeezy.profiles"; //$NON-NLS-1$
 
@@ -53,11 +47,24 @@ public final class ProfileRegistry {
 
     private static final String DEFAULT_TOKEN_ENDPOINT = "https://auth.architeezy.com/realms/architeezy/protocol/openid-connect/token"; //$NON-NLS-1$
 
+    private final IPreferenceStore prefs;
+
+    private final TokenStore tokenStore;
+
     private final List<ConnectionProfile> profiles = new ArrayList<>();
 
     private ConnectionProfile activeProfile;
 
-    private ProfileRegistry() {
+    /**
+     * Creates a registry that reads/writes profiles via {@code prefs} and reads
+     * token presence via {@code tokenStore}.
+     *
+     * @param prefs preference store backing the persisted profile list
+     * @param tokenStore token store used to determine initial connection status
+     */
+    public ProfileRegistry(IPreferenceStore prefs, TokenStore tokenStore) {
+        this.prefs = prefs;
+        this.tokenStore = tokenStore;
         loadProfiles();
     }
 
@@ -90,7 +97,7 @@ public final class ProfileRegistry {
                 .findFirst()
                 .ifPresent(p -> {
                     activeProfile = p;
-                    preferenceStore().setValue(PREF_ACTIVE_PROFILE, profileName);
+                    prefs.setValue(PREF_ACTIVE_PROFILE, profileName);
                 });
     }
 
@@ -106,7 +113,7 @@ public final class ProfileRegistry {
         saveProfilePrefs(profile, authEndpoint, tokenEndpoint);
         if (activeProfile == null) {
             activeProfile = profile;
-            preferenceStore().setValue(PREF_ACTIVE_PROFILE, profile.getName());
+            prefs.setValue(PREF_ACTIVE_PROFILE, profile.getName());
         }
         saveProfileList();
     }
@@ -125,7 +132,7 @@ public final class ProfileRegistry {
             var old = profiles.get(i);
             if (old.getName().equals(oldName)) {
                 if (!old.getServerUrl().equals(newProfile.getServerUrl())) {
-                    TokenStore.INSTANCE.clearTokens(old.getServerUrl());
+                    tokenStore.clearTokens(old.getServerUrl());
                 }
                 if (!old.getName().equals(newProfile.getName())) {
                     removeProfilePrefs(old.getName());
@@ -134,7 +141,7 @@ public final class ProfileRegistry {
                 saveProfilePrefs(newProfile, authEndpoint, tokenEndpoint);
                 if (activeProfile != null && activeProfile.getName().equals(oldName)) {
                     activeProfile = newProfile;
-                    preferenceStore().setValue(PREF_ACTIVE_PROFILE, newProfile.getName());
+                    prefs.setValue(PREF_ACTIVE_PROFILE, newProfile.getName());
                 }
                 break;
             }
@@ -150,7 +157,7 @@ public final class ProfileRegistry {
     public synchronized void removeProfile(String profileName) {
         profiles.removeIf(p -> {
             if (p.getName().equals(profileName)) {
-                TokenStore.INSTANCE.clearTokens(p.getServerUrl());
+                tokenStore.clearTokens(p.getServerUrl());
                 return true;
             }
             return false;
@@ -193,7 +200,7 @@ public final class ProfileRegistry {
      * @return the authorization endpoint URL
      */
     public synchronized String getAuthEndpoint(String profileName) {
-        return preferenceStore().getString(String.format(PREF_AUTH_ENDPOINT, profileName));
+        return prefs.getString(String.format(PREF_AUTH_ENDPOINT, profileName));
     }
 
     /**
@@ -203,24 +210,23 @@ public final class ProfileRegistry {
      * @return the token endpoint URL
      */
     public synchronized String getTokenEndpoint(String profileName) {
-        return preferenceStore().getString(String.format(PREF_TOKEN_ENDPOINT, profileName));
+        return prefs.getString(String.format(PREF_TOKEN_ENDPOINT, profileName));
     }
 
     // -----------------------------------------------------------------------
-    // Persistence (profile list in IPreferenceStore, tokens in ISecurePreferences)
+    // Persistence (profile list in IPreferenceStore, tokens in TokenStore)
 
     private void loadProfiles() {
-        var prefs = preferenceStore();
         var list = prefs.getString(PREF_PROFILES);
         if (list != null && !list.isBlank()) {
-            loadStoredProfiles(prefs, list);
+            loadStoredProfiles(list);
         }
         if (profiles.isEmpty() && !prefs.getBoolean(PREF_DEFAULT_PROFILE_CREATED)) {
-            createDefaultProfile(prefs);
+            createDefaultProfile();
         }
     }
 
-    private void loadStoredProfiles(IPreferenceStore prefs, String list) {
+    private void loadStoredProfiles(String list) {
         var activeName = prefs.getString(PREF_ACTIVE_PROFILE);
         for (var rawName : list.split(",")) { //$NON-NLS-1$
             var name = rawName.trim();
@@ -228,7 +234,7 @@ public final class ProfileRegistry {
             if (url != null && !url.isBlank()) {
                 var clientId = prefs.getString(String.format(PREF_CLIENT_ID, name));
                 var p = new ConnectionProfile(name, url, clientId);
-                var hasToken = TokenStore.INSTANCE.getAccessToken(url) != null;
+                var hasToken = tokenStore.getAccessToken(url) != null;
                 p.setStatus(hasToken ? ProfileStatus.CONNECTED : ProfileStatus.DISCONNECTED);
                 profiles.add(p);
                 if (name.equals(activeName)) {
@@ -241,7 +247,7 @@ public final class ProfileRegistry {
         }
     }
 
-    private void createDefaultProfile(IPreferenceStore prefs) {
+    private void createDefaultProfile() {
         var defaultProfile = new ConnectionProfile(
                 DEFAULT_PROFILE_NAME, DEFAULT_SERVER_URL, DEFAULT_CLIENT_ID);
         defaultProfile.setStatus(ProfileStatus.DISCONNECTED);
@@ -261,11 +267,10 @@ public final class ProfileRegistry {
             }
             sb.append(profiles.get(i).getName());
         }
-        preferenceStore().setValue(PREF_PROFILES, sb.toString());
+        prefs.setValue(PREF_PROFILES, sb.toString());
     }
 
     private void removeProfilePrefs(String name) {
-        var prefs = preferenceStore();
         prefs.setToDefault(String.format(PREF_SERVER_URL, name));
         prefs.setToDefault(String.format(PREF_CLIENT_ID, name));
         prefs.setToDefault(String.format(PREF_AUTH_ENDPOINT, name));
@@ -273,15 +278,10 @@ public final class ProfileRegistry {
     }
 
     private void saveProfilePrefs(ConnectionProfile profile, String authEndpoint, String tokenEndpoint) {
-        var prefs = preferenceStore();
         prefs.setValue(String.format(PREF_SERVER_URL, profile.getName()), profile.getServerUrl());
         prefs.setValue(String.format(PREF_CLIENT_ID, profile.getName()), profile.getClientId());
         prefs.setValue(String.format(PREF_AUTH_ENDPOINT, profile.getName()), authEndpoint);
         prefs.setValue(String.format(PREF_TOKEN_ENDPOINT, profile.getName()), tokenEndpoint);
-    }
-
-    static IPreferenceStore preferenceStore() {
-        return ConnectorPlugin.getInstance().getPreferenceStore();
     }
 
 }

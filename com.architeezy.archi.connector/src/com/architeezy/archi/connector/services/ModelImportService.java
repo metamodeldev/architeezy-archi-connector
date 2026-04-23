@@ -12,11 +12,10 @@ package com.architeezy.archi.connector.services;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.concurrent.Executor;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.swt.widgets.Display;
 
-import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
@@ -26,21 +25,54 @@ import com.architeezy.archi.connector.io.ModelSerializer;
 import com.architeezy.archi.connector.io.SnapshotSupport;
 import com.architeezy.archi.connector.io.TrackedModelStore;
 import com.architeezy.archi.connector.model.ConnectorProperties;
+import com.architeezy.archi.connector.model.IEditorModelManagerAdapter;
 
 /**
  * Downloads a remote model, opens it in Archi, and stores the initial snapshot.
  *
  * Must be called from a background thread (Job / IRunnableWithProgress).
  */
-@SuppressWarnings({ "java:S6548", "java:S112" })
+@SuppressWarnings("java:S112")
 public final class ModelImportService {
 
-    /** The singleton instance. */
-    public static final ModelImportService INSTANCE = new ModelImportService();
+    private final ArchiteezyClient client;
 
-    private final ArchiteezyClient client = new ArchiteezyClient();
+    private final AuthService authService;
 
-    private ModelImportService() {
+    private final ModelSerializer serializer;
+
+    private final TrackedModelStore trackedModels;
+
+    private final SnapshotSupport snapshotSupport;
+
+    private final IEditorModelManagerAdapter editorModelManager;
+
+    private final Executor uiExecutor;
+
+    /**
+     * Creates an import service that uses the given collaborators.
+     *
+     * @param client HTTP client
+     * @param authService provider of valid OAuth access tokens
+     * @param serializer model serializer
+     * @param trackedModels workspace metadata store for tracked models
+     * @param snapshotSupport helper that saves base snapshots
+     * @param editorModelManager editor-model manager adapter
+     * @param uiExecutor synchronous executor used to open and save the model
+     *         on the UI thread; must block until the given runnable finishes
+     *         (e.g. {@code Display.getDefault()::syncExec})
+     */
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public ModelImportService(ArchiteezyClient client, AuthService authService, ModelSerializer serializer,
+            TrackedModelStore trackedModels, SnapshotSupport snapshotSupport,
+            IEditorModelManagerAdapter editorModelManager, Executor uiExecutor) {
+        this.client = client;
+        this.authService = authService;
+        this.serializer = serializer;
+        this.trackedModels = trackedModels;
+        this.snapshotSupport = snapshotSupport;
+        this.editorModelManager = editorModelManager;
+        this.uiExecutor = uiExecutor;
     }
 
     /**
@@ -64,10 +96,10 @@ public final class ModelImportService {
         }
 
         var authenticated = profile.getStatus() == ProfileStatus.CONNECTED;
-        var token = authenticated ? AuthService.INSTANCE.getValidAccessToken(profile) : null;
+        var token = authenticated ? authService.getValidAccessToken(profile) : null;
         var content = client.getModelContent(token, remote.contentUrl());
 
-        var model = ModelSerializer.INSTANCE.deserialize(content, targetFile);
+        var model = serializer.deserialize(content, targetFile);
 
         try {
             openAndConfigureModel(model, remote, authenticated);
@@ -81,7 +113,7 @@ public final class ModelImportService {
         }
 
         if (authenticated) {
-            SnapshotSupport.saveSnapshotAfterConfigure(
+            snapshotSupport.saveSnapshotAfterConfigure(
                     model, ConnectorProperties.extractModelId(remote.selfUrl()), monitor);
         }
 
@@ -91,22 +123,22 @@ public final class ModelImportService {
     private void openAndConfigureModel(IArchimateModel model, RemoteModel remote, boolean authenticated)
             throws Exception {
         var uiError = new Exception[1];
-        Display.getDefault().syncExec(() -> configureModelOnDisplay(model, remote, authenticated, uiError));
+        uiExecutor.execute(() -> configureModelOnUi(model, remote, authenticated, uiError));
         if (uiError[0] != null) {
             throw uiError[0];
         }
     }
 
-    private static void configureModelOnDisplay(IArchimateModel model, RemoteModel remote,
+    private void configureModelOnUi(IArchimateModel model, RemoteModel remote,
             boolean authenticated, Exception[] uiError) {
         try {
-            IEditorModelManager.INSTANCE.openModel(model);
+            editorModelManager.openModel(model);
             if (authenticated) {
                 ConnectorProperties.setProperty(model, ConnectorProperties.KEY_URL, remote.selfUrl());
-                TrackedModelStore.INSTANCE.setLastModified(
+                trackedModels.setLastModified(
                         ConnectorProperties.extractModelId(remote.selfUrl()), remote.lastModified());
             }
-            IEditorModelManager.INSTANCE.saveModel(model);
+            editorModelManager.saveModel(model);
         } catch (Exception e) {
             uiError[0] = e;
         }

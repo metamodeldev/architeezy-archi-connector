@@ -7,7 +7,7 @@
  *
  * SPDX-License-Identifier: EPL-2.0
  */
-package com.architeezy.archi.connector.ui.dialogs;
+package com.architeezy.archi.connector.model.diff;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,21 +25,35 @@ import com.archimatetool.model.IProperty;
 /**
  * Utility methods for formatting EMF Compare differences as human-readable strings.
  */
-final class DiffFormatter {
+public final class DiffFormatter {
 
     private static final String COLON = ": ";
 
     private DiffFormatter() {
     }
 
-    static String formatDiffs(List<Diff> diffs) {
+    /**
+     * Formats the given list of diffs as a comma-separated string. Containment
+     * ADD/DELETE and resource-attachment ADD/DELETE are elided because they
+     * are already represented on the child node itself.
+     *
+     * @param diffs the diffs to render
+     * @return the joined string (never {@code null})
+     */
+    public static String formatDiffs(List<Diff> diffs) {
         return diffs.stream()
                 .map(DiffFormatter::formatDiff)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.joining(", "));
     }
 
-    static String extractLabel(EObject element) {
+    /**
+     * Returns a human-readable label for the given model element.
+     *
+     * @param element the element, may be {@code null}
+     * @return the label (never {@code null})
+     */
+    public static String extractLabel(EObject element) {
         if (element == null) {
             return "?";
         }
@@ -90,7 +104,7 @@ final class DiffFormatter {
         return switch (rc.getKind()) {
         case ADD -> "+ " + name;
         case DELETE -> "- " + name;
-        case MOVE -> "\u21c6 " + name;
+        case MOVE -> "\u21C6 " + name;
         default -> rc.getReference().getName() + COLON + name;
         };
     }

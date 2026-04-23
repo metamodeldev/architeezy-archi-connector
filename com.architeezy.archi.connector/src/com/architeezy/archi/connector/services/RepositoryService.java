@@ -24,16 +24,22 @@ import com.architeezy.archi.connector.auth.ProfileStatus;
  *
  * Must be called from a background thread (Job / IRunnableWithProgress).
  */
-@SuppressWarnings({ "java:S6548", "java:S112" })
+@SuppressWarnings("java:S112")
 public final class RepositoryService {
 
-    /** The singleton instance of RepositoryService. */
-    public static final RepositoryService INSTANCE = new RepositoryService();
+    private final ArchiteezyClient client;
 
-    /** Client used for communication with the Architeezy server. */
-    private final ArchiteezyClient client = new ArchiteezyClient();
+    private final AuthService authService;
 
-    private RepositoryService() {
+    /**
+     * Creates a repository-service view backed by {@code client} and {@code authService}.
+     *
+     * @param client HTTP client for REST calls
+     * @param authService provider of valid OAuth access tokens
+     */
+    public RepositoryService(ArchiteezyClient client, AuthService authService) {
+        this.client = client;
+        this.authService = authService;
     }
 
     /**
@@ -48,7 +54,7 @@ public final class RepositoryService {
     public PagedResult<RemoteModel> listModels(ConnectionProfile profile,
             int page, int size) throws Exception {
         var token = profile.getStatus() == ProfileStatus.CONNECTED
-                ? AuthService.INSTANCE.getValidAccessToken(profile)
+                ? authService.getValidAccessToken(profile)
                 : null;
         return client.listModels(profile.getServerUrl(), token, page, size);
     }
@@ -61,7 +67,7 @@ public final class RepositoryService {
      * @throws Exception if a communication error occurs
      */
     public List<RemoteProject> listProjects(ConnectionProfile profile) throws Exception {
-        var token = AuthService.INSTANCE.getValidAccessToken(profile);
+        var token = authService.getValidAccessToken(profile);
         return client.listProjects(profile.getServerUrl(), token);
     }
 
@@ -73,7 +79,7 @@ public final class RepositoryService {
      * @throws Exception if the deletion fails
      */
     public void deleteModel(ConnectionProfile profile, RemoteModel remote) throws Exception {
-        var token = AuthService.INSTANCE.getValidAccessToken(profile);
+        var token = authService.getValidAccessToken(profile);
         client.deleteModel(token, remote.selfUrl());
     }
 

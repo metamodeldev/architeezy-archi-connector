@@ -36,14 +36,13 @@ import org.eclipse.ui.PlatformUI;
 
 import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.model.IArchimateModel;
+import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
 import com.architeezy.archi.connector.auth.OAuthException;
-import com.architeezy.archi.connector.auth.ProfileRegistry;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.model.ConnectorProperties;
 import com.architeezy.archi.connector.model.TrackedModels;
-import com.architeezy.archi.connector.services.AuthService;
 
 /**
  * Base class for toolbar handlers whose enablement depends on whether any
@@ -137,7 +136,7 @@ public abstract class AbstractTrackedModelHandler extends AbstractHandler {
             return;
         }
         var serverUrl = ConnectorProperties.extractServerUrl(modelUrl);
-        var profile = ProfileRegistry.INSTANCE.findProfileForServer(serverUrl);
+        var profile = ConnectorPlugin.getInstance().services().profileRegistry().findProfileForServer(serverUrl);
         if (profile == null) {
             MessageDialog.openError(shell, title,
                     MessageFormat.format(Messages.AuthPrompt_noProfile, serverUrl));
@@ -157,7 +156,7 @@ public abstract class AbstractTrackedModelHandler extends AbstractHandler {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
                 try {
-                    AuthService.INSTANCE.login(profile);
+                    ConnectorPlugin.getInstance().services().authService().login(profile);
                 } catch (OAuthException e) {
                     Display.getDefault().asyncExec(() -> MessageDialog.openError(shell, title,
                             MessageFormat.format(Messages.AuthPrompt_signInFailed, e.getMessage())));

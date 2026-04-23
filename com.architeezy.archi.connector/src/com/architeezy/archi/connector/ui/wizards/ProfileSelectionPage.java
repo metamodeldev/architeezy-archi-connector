@@ -33,12 +33,12 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 
+import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
+import com.architeezy.archi.connector.auth.ConnectionProfiles;
 import com.architeezy.archi.connector.auth.OAuthException;
-import com.architeezy.archi.connector.auth.ProfileRegistry;
 import com.architeezy.archi.connector.auth.ProfileStatus;
-import com.architeezy.archi.connector.services.AuthService;
 
 /**
  * Wizard page for selecting or creating an Architeezy connection profile.
@@ -207,10 +207,10 @@ public class ProfileSelectionPage extends WizardPage {
 
         ConnectionProfile profile = new ConnectionProfile(name, serverUrl, clientId);
         if (isNewMode) {
-            ProfileRegistry.INSTANCE.addProfile(profile, authEp, tokenEp);
+            ConnectorPlugin.getInstance().services().profileRegistry().addProfile(profile, authEp, tokenEp);
         } else {
             String originalName = editingProfileName != null ? editingProfileName : name;
-            ProfileRegistry.INSTANCE.updateProfile(originalName, profile, authEp, tokenEp);
+            ConnectorPlugin.getInstance().services().profileRegistry().updateProfile(originalName, profile, authEp, tokenEp);
         }
         isNewMode = false;
         editingProfileName = name;
@@ -226,7 +226,7 @@ public class ProfileSelectionPage extends WizardPage {
                 NLS.bind(Messages.ProfilePage_deleteConfirm, profile.getName()))) {
             return;
         }
-        ProfileRegistry.INSTANCE.removeProfile(profile.getName());
+        ConnectorPlugin.getInstance().services().profileRegistry().removeProfile(profile.getName());
         isNewMode = false;
         editingProfileName = null;
         refreshProfileCombo();
@@ -236,9 +236,9 @@ public class ProfileSelectionPage extends WizardPage {
         isNewMode = false;
         setErrorMessage(null);
         int idx = profileCombo.getSelectionIndex();
-        List<ConnectionProfile> profiles = ProfileRegistry.INSTANCE.getProfiles();
+        List<ConnectionProfile> profiles = ConnectorPlugin.getInstance().services().profileRegistry().getProfiles();
         if (idx >= 0 && idx < profiles.size()) {
-            ProfileRegistry.INSTANCE.setActiveProfile(profiles.get(idx).getName());
+            ConnectorPlugin.getInstance().services().profileRegistry().setActiveProfile(profiles.get(idx).getName());
             editingProfileName = profiles.get(idx).getName();
         }
         refreshDetails();
@@ -256,11 +256,11 @@ public class ProfileSelectionPage extends WizardPage {
         }
 
         if (profile.getStatus() == ProfileStatus.CONNECTED) {
-            AuthService.INSTANCE.logout(profile);
+            ConnectorPlugin.getInstance().services().authService().logout(profile);
             updateAuthArea();
             updatePageComplete();
         } else if (signInJob != null) {
-            AuthService.INSTANCE.cancelLogin(profile);
+            ConnectorPlugin.getInstance().services().authService().cancelLogin(profile);
             // UI will be updated by the job's asyncExec when it finishes
         } else {
             setErrorMessage(null);
@@ -270,7 +270,7 @@ public class ProfileSelectionPage extends WizardPage {
                 protected IStatus run(IProgressMonitor monitor) {
                     OAuthException error = null;
                     try {
-                        AuthService.INSTANCE.login(profile);
+                        ConnectorPlugin.getInstance().services().authService().login(profile);
                     } catch (OAuthException ex) {
                         error = ex;
                     }
@@ -304,7 +304,7 @@ public class ProfileSelectionPage extends WizardPage {
     // Refresh helpers
 
     private void refreshProfileCombo() {
-        var profiles = ProfileRegistry.INSTANCE.getProfiles();
+        var profiles = ConnectorPlugin.getInstance().services().profileRegistry().getProfiles();
         var names = profiles.stream().map(ConnectionProfile::getName).toArray(String[]::new);
         profileCombo.setItems(names);
 
@@ -322,31 +322,22 @@ public class ProfileSelectionPage extends WizardPage {
     private void selectCurrentProfile(List<ConnectionProfile> profiles) {
         var targetName = editingProfileName;
         if (targetName == null) {
-            var active = ProfileRegistry.INSTANCE.getActiveProfile();
+            var active = ConnectorPlugin.getInstance().services().profileRegistry().getActiveProfile();
             targetName = active == null ? null : active.getName();
         }
         if (targetName == null) {
             return;
         }
-        var index = indexOfProfile(profiles, targetName);
+        var index = ConnectionProfiles.indexByName(profiles, targetName);
         if (index < 0) {
             return;
         }
         profileCombo.select(index);
         if (editingProfileName != null) {
-            ProfileRegistry.INSTANCE.setActiveProfile(editingProfileName);
+            ConnectorPlugin.getInstance().services().profileRegistry().setActiveProfile(editingProfileName);
         } else {
             editingProfileName = targetName;
         }
-    }
-
-    private static int indexOfProfile(List<ConnectionProfile> profiles, String name) {
-        for (var i = 0; i < profiles.size(); i++) {
-            if (profiles.get(i).getName().equals(name)) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     private void refreshDetails() {
@@ -364,8 +355,8 @@ public class ProfileSelectionPage extends WizardPage {
             profileNameText.setText(nvl(profile.getName()));
             serverUrlText.setText(nvl(profile.getServerUrl()));
             clientIdText.setText(nvl(profile.getClientId()));
-            authEndpointText.setText(nvl(ProfileRegistry.INSTANCE.getAuthEndpoint(profile.getName())));
-            tokenEndpointText.setText(nvl(ProfileRegistry.INSTANCE.getTokenEndpoint(profile.getName())));
+            authEndpointText.setText(nvl(ConnectorPlugin.getInstance().services().profileRegistry().getAuthEndpoint(profile.getName())));
+            tokenEndpointText.setText(nvl(ConnectorPlugin.getInstance().services().profileRegistry().getTokenEndpoint(profile.getName())));
         }
     }
 
@@ -421,11 +412,11 @@ public class ProfileSelectionPage extends WizardPage {
      */
     public ConnectionProfile getSelectedProfile() {
         var idx = profileCombo == null ? -1 : profileCombo.getSelectionIndex();
-        var profiles = ProfileRegistry.INSTANCE.getProfiles();
+        var profiles = ConnectorPlugin.getInstance().services().profileRegistry().getProfiles();
         if (idx >= 0 && idx < profiles.size()) {
             return profiles.get(idx);
         }
-        return ProfileRegistry.INSTANCE.getActiveProfile();
+        return ConnectorPlugin.getInstance().services().profileRegistry().getActiveProfile();
     }
 
     // -----------------------------------------------------------------------

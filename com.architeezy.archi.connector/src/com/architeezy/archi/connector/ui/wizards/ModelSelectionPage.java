@@ -39,13 +39,13 @@ import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.Text;
 
+import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.api.dto.PagedResult;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
-import com.architeezy.archi.connector.auth.ProfileRegistry;
 import com.architeezy.archi.connector.auth.ProfileStatus;
-import com.architeezy.archi.connector.services.RepositoryService;
+import com.architeezy.archi.connector.io.FileNames;
 
 /**
  * Page for selecting a remote model to import.
@@ -151,7 +151,7 @@ public class ModelSelectionPage extends WizardPage {
     // -----------------------------------------------------------------------
 
     private void loadModels() {
-        var profile = ProfileRegistry.INSTANCE.getActiveProfile();
+        var profile = ConnectorPlugin.getInstance().services().profileRegistry().getActiveProfile();
         if (profile == null) {
             setMessage(Messages.ModelPage_noProfile, ERROR);
             return;
@@ -171,7 +171,7 @@ public class ModelSelectionPage extends WizardPage {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
                 try {
-                    PagedResult<RemoteModel> result = RepositoryService.INSTANCE.listModels(profile, 0, PAGE_SIZE);
+                    PagedResult<RemoteModel> result = ConnectorPlugin.getInstance().services().repositoryService().listModels(profile, 0, PAGE_SIZE);
                     Display.getDefault().asyncExec(() -> updateUiWithModels(result.items(), profile));
                 } catch (Exception ex) {
                     Display.getDefault().asyncExec(() -> handleLoadError(ex));
@@ -221,7 +221,7 @@ public class ModelSelectionPage extends WizardPage {
         var fd = new FileDialog(getShell(), SWT.SAVE);
         fd.setText(Messages.ModelPage_saveDialogTitle);
         if (selected != null) {
-            fd.setFileName(sanitize(selected.name()) + ARCHIMATE_EXTENSION);
+            fd.setFileName(FileNames.sanitize(selected.name()) + ARCHIMATE_EXTENSION);
         }
         fd.setFilterExtensions(new String[] { "*" + ARCHIMATE_EXTENSION, "*.*" }); //$NON-NLS-1$ //$NON-NLS-2$
         var path = fd.open();
@@ -274,15 +274,6 @@ public class ModelSelectionPage extends WizardPage {
     public File getTargetFile() {
         var path = savePathText.getText().trim();
         return path.isEmpty() ? null : new File(path);
-    }
-
-    // -----------------------------------------------------------------------
-
-    private static String sanitize(String name) {
-        if (name == null) {
-            return "model"; //$NON-NLS-1$
-        }
-        return name.replaceAll("[\\\\/:*?\"<>|]", "_"); //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     // -----------------------------------------------------------------------

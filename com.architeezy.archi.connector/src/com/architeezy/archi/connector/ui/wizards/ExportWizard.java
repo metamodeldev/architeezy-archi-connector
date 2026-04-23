@@ -20,8 +20,8 @@ import org.eclipse.ui.IExportWizard;
 import org.eclipse.ui.IWorkbench;
 
 import com.archimatetool.model.IArchimateModel;
+import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
-import com.architeezy.archi.connector.services.ModelExportService;
 
 /**
  * Wizard for exporting the active model to the Architeezy repository.
@@ -64,16 +64,7 @@ public class ExportWizard extends Wizard implements IExportWizard {
         var project = projectPage.getSelectedProject();
 
         try {
-            getContainer().run(true, false, (IProgressMonitor monitor) -> {
-                monitor.beginTask(NLS.bind(Messages.ExportWizard_exporting, model.getName()), IProgressMonitor.UNKNOWN);
-                try {
-                    ModelExportService.INSTANCE.exportModel(profile, model, project.id(), monitor);
-                } catch (Exception e) {
-                    throw new InvocationTargetException(e);
-                } finally {
-                    monitor.done();
-                }
-            });
+            getContainer().run(true, false, monitor -> doExport(profile, project, monitor));
         } catch (InvocationTargetException e) {
             var cause = e.getCause();
             MessageDialog.openError(getShell(), Messages.ExportWizard_exportFailed,
@@ -84,6 +75,20 @@ public class ExportWizard extends Wizard implements IExportWizard {
             return false;
         }
         return true;
+    }
+
+    private void doExport(com.architeezy.archi.connector.auth.ConnectionProfile profile,
+            com.architeezy.archi.connector.api.dto.RemoteProject project, IProgressMonitor monitor)
+            throws InvocationTargetException {
+        monitor.beginTask(NLS.bind(Messages.ExportWizard_exporting, model.getName()), IProgressMonitor.UNKNOWN);
+        try {
+            ConnectorPlugin.getInstance().services().modelExportService()
+                    .exportModel(profile, model, project.id(), monitor);
+        } catch (Exception e) {
+            throw new InvocationTargetException(e);
+        } finally {
+            monitor.done();
+        }
     }
 
 }

@@ -18,13 +18,9 @@ import org.eclipse.emf.compare.EMFCompare;
 import org.eclipse.emf.compare.merge.BatchMerger;
 import org.eclipse.emf.compare.merge.IMerger;
 import org.eclipse.emf.compare.scope.DefaultComparisonScope;
-import org.eclipse.emf.ecore.resource.Resource;
-import org.eclipse.jface.window.Window;
-import org.eclipse.swt.widgets.Display;
 
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.io.ModelSerializer;
-import com.architeezy.archi.connector.ui.dialogs.ConflictResolutionDialog;
 
 /**
  * Performs 3-way merges for the DIVERGED scenario where both local and remote
@@ -33,19 +29,28 @@ import com.architeezy.archi.connector.ui.dialogs.ConflictResolutionDialog;
  * <p>
  * Uses EMF Compare to compute a structural diff of base, local, and remote.
  * Non-conflicting remote changes are applied automatically. Real conflicts are
- * presented to the user via {@link ConflictResolutionDialog}.
+ * delegated to an {@link IConflictResolver} (a modal dialog in production).
  *
  * <p>
- * Must be called from a background thread; UI operations switch to the UI
- * thread internally.
+ * Must be called from a background thread; the conflict resolver is
+ * responsible for any UI-thread hand-off it requires.
  */
-@SuppressWarnings({ "java:S6548", "java:S112" })
+@SuppressWarnings("java:S112")
 public final class MergeService {
 
-    /** The singleton instance of MergeService. */
-    public static final MergeService INSTANCE = new MergeService();
+    private final ModelSerializer serializer;
 
-    private MergeService() {
+    private final IConflictResolver conflictResolver;
+
+    /**
+     * Creates a new merge service.
+     *
+     * @param serializer model serializer used for base/local/remote bytes
+     * @param conflictResolver strategy invoked when real conflicts are detected
+     */
+    public MergeService(ModelSerializer serializer, IConflictResolver conflictResolver) {
+        this.serializer = serializer;
+        this.conflictResolver = conflictResolver;
     }
 
     /**
@@ -54,22 +59,19 @@ public final class MergeService {
      *
      * <p>
      * Non-conflicting remote changes are applied automatically. Real conflicts
-     * are shown in the conflict-resolution dialog for the user to resolve.
+     * are delegated to the configured {@link IConflictResolver}.
      *
      * @param liveModel the locally open model
      * @param baseBytes the base snapshot bytes (last known common state)
      * @param remoteBytes the remote model bytes downloaded from the server
-     * @return the merged model bytes ready to pass to
-     *         {@code RepositoryService.applyNonDestructivePull}, or {@code null}
-     *         if the user cancelled the conflict-resolution dialog
-     * @throws Exception if serialization or comparison fails
+     * @return the merged model bytes, or {@code null} if the conflict resolver cancelled
+     * @throws Exception if serialization, comparison, or conflict resolution fails
      */
     public byte[] computeMergedContent(IArchimateModel liveModel, byte[] baseBytes, byte[] remoteBytes)
             throws Exception {
-        var baseModel = ModelSerializer.INSTANCE.deserializeInMemory(baseBytes);
-        var localCopy = ModelSerializer.INSTANCE.deserializeInMemory(
-                ModelSerializer.INSTANCE.serialize(liveModel));
-        var remoteModel = ModelSerializer.INSTANCE.deserializeInMemory(remoteBytes);
+        var baseModel = serializer.deserializeInMemory(baseBytes);
+        var localCopy = serializer.deserializeInMemory(serializer.serialize(liveModel));
+        var remoteModel = serializer.deserializeInMemory(remoteBytes);
 
         var localResource = localCopy.eResource();
         var remoteResource = remoteModel.eResource();
@@ -83,32 +85,11 @@ public final class MergeService {
 
         if (!hasRealConflicts) {
             applyAllRemoteChanges(comparison);
-            return ModelSerializer.INSTANCE.serialize(localCopy);
+            return serializer.serialize(localCopy);
         }
 
         var registry = IMerger.RegistryImpl.createStandaloneInstance();
-        byte[][] mergedBytes = { null };
-        Exception[] runError = { null };
-        Display.getDefault()
-                .syncExec(() -> showConflictDialog(comparison, localResource, registry, mergedBytes, runError));
-
-        if (runError[0] != null) {
-            throw runError[0];
-        }
-        return mergedBytes[0];
-    }
-
-    private static void showConflictDialog(Comparison comparison, Resource localResource,
-            IMerger.Registry registry, byte[][] mergedBytes, Exception[] runError) {
-        var dialog = new ConflictResolutionDialog(
-                Display.getDefault().getActiveShell(), comparison, localResource, registry);
-        if (dialog.open() == Window.OK) {
-            if (dialog.getMergeError() != null) {
-                runError[0] = dialog.getMergeError();
-            } else {
-                mergedBytes[0] = dialog.getMergedContent();
-            }
-        }
+        return conflictResolver.resolve(comparison, localResource, registry);
     }
 
     private static void applyAllRemoteChanges(Comparison comparison) {

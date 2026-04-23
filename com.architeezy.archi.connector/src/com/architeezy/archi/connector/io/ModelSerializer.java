@@ -25,13 +25,11 @@ import com.archimatetool.model.util.ArchimateResourceFactory;
  *
  * All operations use a temporary file to avoid partial writes.
  */
-@SuppressWarnings("java:S6548")
 public final class ModelSerializer {
 
-    /** The singleton instance of ModelSerializer. */
-    public static final ModelSerializer INSTANCE = new ModelSerializer();
-
-    private ModelSerializer() {
+    /** Creates a new serializer. */
+    public ModelSerializer() {
+        // No initialization required; kept explicit for clarity.
     }
 
     /**

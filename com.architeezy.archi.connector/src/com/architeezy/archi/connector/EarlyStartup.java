@@ -9,12 +9,11 @@
  */
 package com.architeezy.archi.connector;
 
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IStartup;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.commands.ICommandService;
-
-import com.architeezy.archi.connector.ui.navigator.ModelTreeDecorator;
 
 /**
  * Called by Eclipse after the workbench is initialized. Installs the model
@@ -32,7 +31,10 @@ public class EarlyStartup implements IStartup {
     @Override
     public void earlyStartup() {
         Display.getDefault().asyncExec(() -> {
-            ModelTreeDecorator.INSTANCE.install();
+            var plugin = ConnectorPlugin.getInstance();
+            if (plugin != null && plugin.services() != null) {
+                plugin.services().modelTreeDecorator().install();
+            }
             instantiateHandlers();
         });
     }
@@ -53,7 +55,7 @@ public class EarlyStartup implements IStartup {
                 // changes occur.
                 service.getCommand(id).isEnabled();
             } catch (Exception e) {
-                ConnectorPlugin.getInstance().getLog().warn("Failed to eagerly instantiate handler for " + id, e); //$NON-NLS-1$
+                Platform.getLog(EarlyStartup.class).warn("Failed to eagerly instantiate handler for " + id, e); //$NON-NLS-1$
             }
         }
     }

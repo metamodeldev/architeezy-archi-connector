@@ -16,18 +16,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 
-import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.model.IArchimateModel;
-import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.api.ArchiteezyClient;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.auth.ProfileRegistry;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.io.TrackedModelStore;
 import com.architeezy.archi.connector.model.ConnectorProperties;
+import com.architeezy.archi.connector.model.IEditorModelManagerAdapter;
 
 /**
  * Background service that periodically checks for newer versions of tracked
@@ -35,26 +35,46 @@ import com.architeezy.archi.connector.model.ConnectorProperties;
  *
  * Must be started from the UI thread via {@link #start()}.
  */
-@SuppressWarnings("java:S6548")
 public final class UpdateCheckService {
-
-    /** The singleton instance. */
-    public static final UpdateCheckService INSTANCE = new UpdateCheckService();
 
     /** Check interval in milliseconds. */
     private static final long CHECK_INTERVAL_MS = 5 * 1000L;
 
-    /** Model URL to remote metadata map when server version is newer than local. */
+    private final ArchiteezyClient client;
+
+    private final AuthService authService;
+
+    private final ProfileRegistry profileRegistry;
+
+    private final TrackedModelStore trackedModels;
+
+    private final IEditorModelManagerAdapter editorModelManager;
+
     private final Map<String, RemoteModel> pendingUpdates = new ConcurrentHashMap<>();
 
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 
-    private final ArchiteezyClient client = new ArchiteezyClient();
-
     @SuppressWarnings("java:S3077")
     private volatile Job checkJob;
 
-    private UpdateCheckService() {
+    /**
+     * Creates an update checker that polls via {@code client} and resolves
+     * tokens through {@code authService} / {@code profileRegistry}.
+     *
+     * @param client HTTP client
+     * @param authService provider of valid OAuth access tokens
+     * @param profileRegistry registry used to find a profile per server URL
+     * @param trackedModels workspace metadata for last-seen modification dates
+     * @param editorModelManager editor-model manager adapter
+     */
+    public UpdateCheckService(ArchiteezyClient client, AuthService authService,
+            ProfileRegistry profileRegistry, TrackedModelStore trackedModels,
+            IEditorModelManagerAdapter editorModelManager) {
+        this.client = client;
+        this.authService = authService;
+        this.profileRegistry = profileRegistry;
+        this.trackedModels = trackedModels;
+        this.editorModelManager = editorModelManager;
     }
 
     // -----------------------------------------------------------------------
@@ -155,7 +175,7 @@ public final class UpdateCheckService {
         try {
             checkAllTrackedModels(monitor);
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog().warn("Architeezy update check failed", e); //$NON-NLS-1$
+            Platform.getLog(UpdateCheckService.class).warn("Architeezy update check failed", e); //$NON-NLS-1$
         } finally {
             if (!monitor.isCanceled()) {
                 scheduleCheck(CHECK_INTERVAL_MS);
@@ -165,7 +185,7 @@ public final class UpdateCheckService {
     }
 
     private void checkAllTrackedModels(IProgressMonitor monitor) {
-        var models = IEditorModelManager.INSTANCE.getModels();
+        var models = editorModelManager.getModels();
         if (models == null || models.isEmpty()) {
             return;
         }
@@ -181,7 +201,7 @@ public final class UpdateCheckService {
         }
     }
 
-    private boolean checkModel(IArchimateModel model) {
+    boolean checkModel(IArchimateModel model) {
         var modelUrl = ConnectorProperties.getProperty(model, ConnectorProperties.KEY_URL);
         if (modelUrl == null) {
             return false;
@@ -191,7 +211,7 @@ public final class UpdateCheckService {
             var modelId = ConnectorProperties.extractModelId(modelUrl);
             var token = resolveToken(serverUrl);
             var remote = client.getModel(serverUrl, token, modelId);
-            var localDate = TrackedModelStore.INSTANCE.getLastModified(modelId);
+            var localDate = trackedModels.getLastModified(modelId);
             if (isNewer(remote.lastModified(), localDate)) {
                 var prev = pendingUpdates.put(modelUrl, remote);
                 return prev == null;
@@ -200,25 +220,25 @@ public final class UpdateCheckService {
                 return prev != null;
             }
         } catch (Exception e) {
-            ConnectorPlugin.getInstance().getLog()
+            Platform.getLog(UpdateCheckService.class)
                     .warn("Failed to check update for " + modelUrl, e); //$NON-NLS-1$
             return false;
         }
     }
 
-    private static String resolveToken(String serverUrl) {
-        var profile = ProfileRegistry.INSTANCE.findProfileForServer(serverUrl);
+    private String resolveToken(String serverUrl) {
+        var profile = profileRegistry.findProfileForServer(serverUrl);
         if (profile == null || profile.getStatus() != ProfileStatus.CONNECTED) {
             return null;
         }
         try {
-            return AuthService.INSTANCE.getValidAccessToken(profile);
+            return authService.getValidAccessToken(profile);
         } catch (Exception e) {
             return null;
         }
     }
 
-    private static boolean isNewer(String serverDate, String localDate) {
+    static boolean isNewer(String serverDate, String localDate) {
         if (serverDate == null || serverDate.isBlank()) {
             return false;
         }
@@ -233,7 +253,7 @@ public final class UpdateCheckService {
             try {
                 listener.run();
             } catch (Exception e) {
-                ConnectorPlugin.getInstance().getLog()
+                Platform.getLog(UpdateCheckService.class)
                         .warn("Update listener threw an exception", e); //$NON-NLS-1$
             }
         }

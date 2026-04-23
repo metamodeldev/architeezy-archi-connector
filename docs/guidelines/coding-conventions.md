@@ -20,8 +20,6 @@ preceding it.
 
 Avoid metadata indicators in names. Let the language and the package structure provide context.
 
-- **Interfaces:** Do **not** use the `I` prefix (e.g., use `ModelStorageService`, not
-  `IModelStorageService`).
 - **Implementations:** Do **not** use the `Impl` suffix. Use descriptive names (e.g.,
   `DatabaseModelStorageService`).
 - **Data Types:** Do not include types in names (e.g., use `users`, not `userList`).

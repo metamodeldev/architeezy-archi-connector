@@ -12,12 +12,12 @@ package com.architeezy.archi.connector.io;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Properties;
+import java.util.function.Supplier;
 
 import org.eclipse.core.runtime.Platform;
-
-import com.architeezy.archi.connector.ConnectorPlugin;
 
 /**
  * Workspace-level metadata for tracked Architeezy models.
@@ -29,24 +29,28 @@ import com.architeezy.archi.connector.ConnectorPlugin;
  * stored content byte-for-byte, so snapshot comparisons stay stable.
  *
  * <p>
- * Persisted as a {@link Properties} file under the plugin's state location.
+ * Persisted as a {@link Properties} file under the given state location.
  * Writes are atomic via a tmp+rename.
  */
-@SuppressWarnings("java:S6548")
 public final class TrackedModelStore {
-
-    /** The singleton instance. */
-    public static final TrackedModelStore INSTANCE = new TrackedModelStore();
 
     private static final String FILE_NAME = "tracked-models.properties"; //$NON-NLS-1$
 
     private static final String KEY_LAST_MODIFIED_SUFFIX = ".lastModificationDateTime"; //$NON-NLS-1$
 
+    private final Supplier<Path> stateLocation;
+
     private final Object lock = new Object();
 
     private Properties cache;
 
-    private TrackedModelStore() {
+    /**
+     * Creates a new store backed by a file under {@code stateLocation}.
+     *
+     * @param stateLocation supplier of the base directory for the properties file
+     */
+    public TrackedModelStore(Supplier<Path> stateLocation) {
+        this.stateLocation = stateLocation;
     }
 
     /**
@@ -112,7 +116,7 @@ public final class TrackedModelStore {
             try (var in = Files.newInputStream(file.toPath())) {
                 props.load(in);
             } catch (IOException e) {
-                ConnectorPlugin.getInstance().getLog()
+                Platform.getLog(TrackedModelStore.class)
                         .warn("Failed to load tracked-models store", e); //$NON-NLS-1$
             }
         }
@@ -137,15 +141,13 @@ public final class TrackedModelStore {
             } catch (IOException ignored) {
                 // best-effort cleanup
             }
-            ConnectorPlugin.getInstance().getLog()
+            Platform.getLog(TrackedModelStore.class)
                     .error("Failed to save tracked-models store", e); //$NON-NLS-1$
         }
     }
 
-    private static File storeFile() {
-        var stateLocation = Platform.getStateLocation(
-                Platform.getBundle(ConnectorPlugin.PLUGIN_ID)).toFile();
-        return new File(stateLocation, FILE_NAME);
+    private File storeFile() {
+        return new File(stateLocation.get().toFile(), FILE_NAME);
     }
 
 }

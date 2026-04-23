@@ -20,10 +20,10 @@ import org.eclipse.osgi.util.NLS;
 import org.eclipse.ui.IImportWizard;
 import org.eclipse.ui.IWorkbench;
 
+import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
-import com.architeezy.archi.connector.services.ModelImportService;
 
 /**
  * Wizard for importing a model from the Architeezy repository.
@@ -79,7 +79,8 @@ public class ImportWizard extends Wizard implements IImportWizard {
             throws InvocationTargetException {
         monitor.beginTask(NLS.bind(Messages.ImportWizard_importing, remote.name()), IProgressMonitor.UNKNOWN);
         try {
-            ModelImportService.INSTANCE.importModel(profile, remote, targetFile, monitor);
+            ConnectorPlugin.getInstance().services().modelImportService()
+                    .importModel(profile, remote, targetFile, monitor);
         } catch (Exception e) {
             throw new InvocationTargetException(e);
         } finally {
