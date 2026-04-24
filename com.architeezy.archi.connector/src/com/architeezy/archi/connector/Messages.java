@@ -80,8 +80,6 @@ public final class Messages extends NLS {
 
     public static String ModelPage_columnName;
 
-    public static String ModelPage_columnAuthor;
-
     public static String ModelPage_columnLastModified;
 
     public static String ModelPage_saveAs;
@@ -97,6 +95,8 @@ public final class Messages extends NLS {
     public static String ModelPage_loadError;
 
     public static String ModelPage_saveDialogTitle;
+
+    public static String ModelPage_overwriteWarning;
 
     // ProjectSelectionPage
     public static String ProjectPage_title;
@@ -188,8 +188,6 @@ public final class Messages extends NLS {
     public static String OpenInBrowserHandler_jobName;
 
     public static String OpenInBrowserHandler_failed;
-
-    public static String OpenInBrowserHandler_missingSlugs;
 
     // PullHandler
     public static String PullHandler_title;

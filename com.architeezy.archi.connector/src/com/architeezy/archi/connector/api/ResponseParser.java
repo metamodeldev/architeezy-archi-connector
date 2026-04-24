@@ -175,6 +175,21 @@ final class ResponseParser {
         return projects;
     }
 
+    /**
+     * Parses a HAL+JSON page of projects.
+     *
+     * @param json the response body
+     * @param requestedPage the page index requested, used as a fallback when the response omits it
+     * @return parsed page, never {@code null}
+     */
+    static PagedResult<RemoteProject> parseProjectPage(String json, int requestedPage) {
+        var items = parseProjectList(json);
+        var totalElements = OAuthManager.extractJsonLong(json, "totalElements", items.size()); //$NON-NLS-1$
+        var totalPages = (int) OAuthManager.extractJsonLong(json, "totalPages", 1); //$NON-NLS-1$
+        var pageNum = (int) OAuthManager.extractJsonLong(json, "number", requestedPage); //$NON-NLS-1$
+        return new PagedResult<>(items, totalElements, totalPages, pageNum);
+    }
+
     private static void parseProjectArray(String arrayContent, List<RemoteProject> out) {
         var objStart = arrayContent.indexOf('{');
         while (objStart >= 0) {

@@ -62,6 +62,23 @@ public final class RepositoryService {
     }
 
     /**
+     * Lists a page of models using the server's default page size.
+     *
+     * @param profile the connection profile to use
+     * @param page the zero-based page index
+     * @return a paged result containing the list of remote models
+     * @throws OAuthException if the profile has no valid token
+     * @throws ApiException if the REST call fails
+     */
+    public PagedResult<RemoteModel> listModels(ConnectionProfile profile, int page)
+            throws OAuthException, ApiException {
+        var token = profile.getStatus() == ProfileStatus.CONNECTED
+                ? authService.getValidAccessToken(profile)
+                : null;
+        return client.listModels(profile.getServerUrl(), token, page);
+    }
+
+    /**
      * Lists the projects available in the remote repository.
      *
      * @param profile the connection profile to use
@@ -72,6 +89,21 @@ public final class RepositoryService {
     public List<RemoteProject> listProjects(ConnectionProfile profile) throws OAuthException, ApiException {
         var token = authService.getValidAccessToken(profile);
         return client.listProjects(profile.getServerUrl(), token);
+    }
+
+    /**
+     * Lists a page of projects using the server's default page size.
+     *
+     * @param profile the connection profile to use
+     * @param page the zero-based page index
+     * @return a paged result containing the list of remote projects
+     * @throws OAuthException if the profile has no valid token
+     * @throws ApiException if the REST call fails
+     */
+    public PagedResult<RemoteProject> listProjects(ConnectionProfile profile, int page)
+            throws OAuthException, ApiException {
+        var token = authService.getValidAccessToken(profile);
+        return client.listProjectsPage(profile.getServerUrl(), token, page);
     }
 
     /**

@@ -10,19 +10,25 @@
 package com.architeezy.archi.connector.ui.wizards;
 
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.core.runtime.OperationCanceledException;
+import org.eclipse.core.runtime.SubMonitor;
+import org.eclipse.jface.layout.TableColumnLayout;
 import org.eclipse.jface.viewers.ArrayContentProvider;
+import org.eclipse.jface.viewers.ColumnPixelData;
+import org.eclipse.jface.viewers.ColumnWeightData;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.viewers.ITableLabelProvider;
 import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.jface.viewers.Viewer;
+import org.eclipse.jface.viewers.ViewerComparator;
 import org.eclipse.jface.wizard.WizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
@@ -32,13 +38,13 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.Text;
 
+import com.archimatetool.editor.ArchiPlugin;
 import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
 import com.architeezy.archi.connector.api.dto.PagedResult;
@@ -46,6 +52,7 @@ import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.io.FileNames;
+import com.architeezy.archi.connector.util.DateFormats;
 
 /**
  * Page for selecting a remote model to import.
@@ -55,8 +62,6 @@ public class ModelSelectionPage extends WizardPage {
 
     private static final String ARCHIMATE_EXTENSION = ".archimate";
 
-    private static final int PAGE_SIZE = 100;
-
     private Text searchField;
 
     private TableViewer tableViewer;
@@ -64,8 +69,6 @@ public class ModelSelectionPage extends WizardPage {
     private Text savePathText;
 
     private List<RemoteModel> allModels = Collections.emptyList();
-
-    private Job loadJob;
 
     /**
      * Default constructor.
@@ -107,29 +110,53 @@ public class ModelSelectionPage extends WizardPage {
     }
 
     private void createTable(Composite parent) {
-        var table = new Table(parent, SWT.BORDER | SWT.FULL_SELECTION | SWT.SINGLE | SWT.V_SCROLL);
-        table.setHeaderVisible(true);
-        table.setLinesVisible(true);
+        var tableHolder = new Composite(parent, SWT.NONE);
         var gd = new GridData(SWT.FILL, SWT.FILL, true, true);
         gd.heightHint = 250;
-        table.setLayoutData(gd);
+        tableHolder.setLayoutData(gd);
+        var tableLayout = new TableColumnLayout();
+        tableHolder.setLayout(tableLayout);
+
+        var table = new Table(tableHolder, SWT.BORDER | SWT.FULL_SELECTION | SWT.SINGLE | SWT.V_SCROLL);
+        table.setHeaderVisible(true);
+        table.setLinesVisible(true);
 
         var colName = new TableColumn(table, SWT.NONE);
         colName.setText(Messages.ModelPage_columnName);
-        colName.setWidth(260);
-
-        var colAuthor = new TableColumn(table, SWT.NONE);
-        colAuthor.setText(Messages.ModelPage_columnAuthor);
-        colAuthor.setWidth(120);
+        tableLayout.setColumnData(colName, new ColumnWeightData(1, 200, true));
 
         var colModified = new TableColumn(table, SWT.NONE);
         colModified.setText(Messages.ModelPage_columnLastModified);
-        colModified.setWidth(140);
+        tableLayout.setColumnData(colModified, new ColumnPixelData(200, true, false));
 
         tableViewer = new TableViewer(table);
         tableViewer.setContentProvider(ArrayContentProvider.getInstance());
         tableViewer.setLabelProvider(new ModelTableLabelProvider());
         tableViewer.addSelectionChangedListener(e -> onSelectionChanged());
+
+        var comparator = new ModelColumnComparator();
+        tableViewer.setComparator(comparator);
+        colName.addSelectionListener(SelectionListener.widgetSelectedAdapter(
+                e -> toggleSort(comparator, colName, ModelColumnComparator.BY_NAME)));
+        colModified.addSelectionListener(SelectionListener.widgetSelectedAdapter(
+                e -> toggleSort(comparator, colModified, ModelColumnComparator.BY_MODIFIED)));
+        table.setSortColumn(colName);
+        table.setSortDirection(SWT.UP);
+        comparator.setSort(ModelColumnComparator.BY_NAME, false);
+    }
+
+    private void toggleSort(ModelColumnComparator comparator, TableColumn column, int columnId) {
+        var table = tableViewer.getTable();
+        boolean descending;
+        if (table.getSortColumn() == column) {
+            descending = table.getSortDirection() != SWT.DOWN;
+        } else {
+            descending = false;
+        }
+        comparator.setSort(columnId, descending);
+        table.setSortColumn(column);
+        table.setSortDirection(descending ? SWT.DOWN : SWT.UP);
+        tableViewer.refresh();
     }
 
     private void createSaveAsRow(Composite parent) {
@@ -142,6 +169,7 @@ public class ModelSelectionPage extends WizardPage {
 
         savePathText = new Text(row, SWT.BORDER | SWT.READ_ONLY);
         savePathText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        savePathText.addModifyListener((ModifyListener) e -> refreshFileStatus());
 
         var browseBtn = new Button(row, SWT.PUSH);
         browseBtn.setText(Messages.ModelPage_browse);
@@ -156,30 +184,45 @@ public class ModelSelectionPage extends WizardPage {
             setMessage(Messages.ModelPage_noProfile, ERROR);
             return;
         }
-        if (loadJob != null) {
-            loadJob.cancel();
-        }
         setMessage(Messages.ModelPage_loading);
         tableViewer.setInput(Collections.emptyList());
-        loadJob = createLoadModelsJob(profile);
-        loadJob.schedule();
+        var loaded = new ArrayList<RemoteModel>();
+        try {
+            getContainer().run(true, true, monitor -> loadAllModelPages(profile, loaded, monitor));
+            updateUiWithModels(loaded, profile);
+        } catch (InvocationTargetException e) {
+            var cause = e.getCause();
+            handleLoadError(cause instanceof Exception ex ? ex : new RuntimeException(cause));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
-    private Job createLoadModelsJob(ConnectionProfile profile) {
-        return new Job(Messages.ModelPage_loadingJob) {
-
-            @Override
-            protected IStatus run(IProgressMonitor monitor) {
-                try {
-                    PagedResult<RemoteModel> result = ConnectorPlugin.getInstance().services().repositoryService().listModels(profile, 0, PAGE_SIZE);
-                    Display.getDefault().asyncExec(() -> updateUiWithModels(result.items(), profile));
-                } catch (Exception ex) {
-                    Display.getDefault().asyncExec(() -> handleLoadError(ex));
+    private void loadAllModelPages(ConnectionProfile profile, List<RemoteModel> out, IProgressMonitor monitor)
+            throws InvocationTargetException {
+        var progress = SubMonitor.convert(monitor, Messages.ModelPage_loadingJob, 1);
+        try {
+            var service = ConnectorPlugin.getInstance().services().repositoryService();
+            int page = 0;
+            PagedResult<RemoteModel> result = service.listModels(profile, page);
+            out.addAll(result.items());
+            int totalPages = Math.max(result.totalPages(), 1);
+            progress.setWorkRemaining(totalPages);
+            progress.worked(1);
+            while (result.hasMore()) {
+                if (progress.isCanceled()) {
+                    throw new OperationCanceledException();
                 }
-                return Status.OK_STATUS;
+                page++;
+                result = service.listModels(profile, page);
+                out.addAll(result.items());
+                progress.worked(1);
             }
-
-        };
+        } catch (OperationCanceledException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InvocationTargetException(e);
+        }
     }
 
     private void updateUiWithModels(List<RemoteModel> models, ConnectionProfile profile) {
@@ -220,8 +263,18 @@ public class ModelSelectionPage extends WizardPage {
         var selected = getSelectedModel();
         var fd = new FileDialog(getShell(), SWT.SAVE);
         fd.setText(Messages.ModelPage_saveDialogTitle);
-        if (selected != null) {
-            fd.setFileName(FileNames.sanitize(selected.name()) + ARCHIMATE_EXTENSION);
+        var current = getTargetFile();
+        if (current != null) {
+            var parent = current.getParentFile();
+            if (parent != null) {
+                fd.setFilterPath(parent.getAbsolutePath());
+            }
+            fd.setFileName(current.getName());
+        } else {
+            fd.setFilterPath(defaultSaveFolder().getAbsolutePath());
+            if (selected != null) {
+                fd.setFileName(defaultFileName(selected));
+            }
         }
         fd.setFilterExtensions(new String[] { "*" + ARCHIMATE_EXTENSION, "*.*" }); //$NON-NLS-1$ //$NON-NLS-2$
         var path = fd.open();
@@ -236,9 +289,9 @@ public class ModelSelectionPage extends WizardPage {
 
     private void onSelectionChanged() {
         var model = getSelectedModel();
-        if (model != null && (savePathText.getText().isBlank())) {
-            // Pre-fill filename when user selects a model for the first time
-            savePathText.setText(""); //$NON-NLS-1$
+        if (model != null) {
+            var path = new File(defaultSaveFolder(), defaultFileName(model));
+            savePathText.setText(path.getAbsolutePath());
         }
         updatePageComplete();
     }
@@ -246,6 +299,43 @@ public class ModelSelectionPage extends WizardPage {
     private void updatePageComplete() {
         var complete = getSelectedModel() != null && !savePathText.getText().isBlank();
         setPageComplete(complete);
+        refreshFileStatus();
+    }
+
+    private void refreshFileStatus() {
+        if (getControl() == null || getControl().isDisposed()) {
+            return;
+        }
+        var file = getTargetFile();
+        if (file != null && file.isFile()) {
+            setMessage(NLS.bind(Messages.ModelPage_overwriteWarning, file.getName()), WARNING);
+        } else if (getSelectedModel() != null) {
+            setMessage(getDescription());
+        }
+    }
+
+    private static File defaultSaveFolder() {
+        File folder = null;
+        try {
+            folder = ArchiPlugin.getInstance().getUserDataFolder();
+        } catch (Exception ignored) {
+            // fall through
+        }
+        if (folder == null) {
+            folder = new File(System.getProperty("user.home"), "Documents/Archi"); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        if (!folder.isDirectory()) {
+            folder.mkdirs();
+        }
+        return folder;
+    }
+
+    private static String defaultFileName(RemoteModel model) {
+        return String.join("-", //$NON-NLS-1$
+                FileNames.sanitize(model.scopeSlug()),
+                FileNames.sanitize(model.projectSlug()),
+                FileNames.sanitize(model.projectVersion()),
+                FileNames.sanitize(model.slug())) + ARCHIMATE_EXTENSION;
     }
 
     // -----------------------------------------------------------------------
@@ -287,8 +377,7 @@ public class ModelSelectionPage extends WizardPage {
             }
             return switch (columnIndex) {
             case 0 -> m.name() != null ? m.name() : m.id();
-            case 1 -> nvl(m.author());
-            case 2 -> nvl(m.lastModified());
+            case 1 -> DateFormats.formatIsoDateTime(m.lastModified());
             default -> ""; //$NON-NLS-1$
             };
         }
@@ -298,8 +387,39 @@ public class ModelSelectionPage extends WizardPage {
             return null;
         }
 
-        private static String nvl(String s) {
-            return s != null ? s : ""; //$NON-NLS-1$
+    }
+
+    private static final class ModelColumnComparator extends ViewerComparator {
+
+        static final int BY_NAME = 0;
+
+        static final int BY_MODIFIED = 1;
+
+        private static final Comparator<String> NULLS_LAST_CI = Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
+
+        private int column = BY_NAME;
+
+        private boolean descending;
+
+        void setSort(int columnId, boolean desc) {
+            this.column = columnId;
+            this.descending = desc;
+        }
+
+        @Override
+        public int compare(Viewer viewer, Object e1, Object e2) {
+            if (!(e1 instanceof RemoteModel a) || !(e2 instanceof RemoteModel b)) {
+                return 0;
+            }
+            int cmp = switch (column) {
+            case BY_MODIFIED -> NULLS_LAST_CI.compare(a.lastModified(), b.lastModified());
+            default -> NULLS_LAST_CI.compare(displayName(a), displayName(b));
+            };
+            return descending ? -cmp : cmp;
+        }
+
+        private static String displayName(RemoteModel m) {
+            return m.name() != null ? m.name() : m.id();
         }
 
     }

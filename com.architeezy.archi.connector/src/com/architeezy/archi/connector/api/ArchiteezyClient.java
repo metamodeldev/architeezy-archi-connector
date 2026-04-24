@@ -79,6 +79,22 @@ public class ArchiteezyClient {
     }
 
     /**
+     * Lists a page of models using the server's default page size.
+     *
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param page zero-based page index
+     * @return paged list of models
+     * @throws ApiException on HTTP or I/O error
+     */
+    public PagedResult<RemoteModel> listModels(String serverUrl, String accessToken, int page)
+            throws ApiException {
+        var url = serverUrl + "/api/models?page=" + page; //$NON-NLS-1$
+        var json = get(url, accessToken);
+        return ResponseParser.parseModelPage(json, page);
+    }
+
+    /**
      * Fetches metadata for a single model.
      *
      * @param serverUrl base URL of the Architeezy server
@@ -156,6 +172,22 @@ public class ArchiteezyClient {
         var url = serverUrl + "/api/projects?size=100"; //$NON-NLS-1$
         var json = get(url, accessToken);
         return ResponseParser.parseProjectList(json);
+    }
+
+    /**
+     * Lists a page of projects using the server's default page size.
+     *
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param page zero-based page index
+     * @return paged list of projects
+     * @throws ApiException on HTTP or I/O error
+     */
+    public PagedResult<RemoteProject> listProjectsPage(String serverUrl, String accessToken, int page)
+            throws ApiException {
+        var url = serverUrl + "/api/projects?page=" + page; //$NON-NLS-1$
+        var json = get(url, accessToken);
+        return ResponseParser.parseProjectPage(json, page);
     }
 
     // -----------------------------------------------------------------------

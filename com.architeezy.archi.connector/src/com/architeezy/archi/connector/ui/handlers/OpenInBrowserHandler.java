@@ -80,22 +80,13 @@ public class OpenInBrowserHandler extends AbstractTrackedModelHandler {
         var services = ConnectorPlugin.getInstance().services();
         var token = services.authService().getValidAccessToken(profile);
         var remote = services.apiClient().getModel(serverUrl, token, modelId);
-        var url = buildBrowserUrl(serverUrl, remote.scopeSlug(), remote.projectSlug(),
-                remote.projectVersion(), remote.slug());
-        if (url == null) {
-            throw new IllegalStateException(Messages.OpenInBrowserHandler_missingSlugs);
-        }
-        urlRef.set(url);
+        urlRef.set(buildBrowserUrl(serverUrl, remote.scopeSlug(), remote.projectSlug(),
+                remote.projectVersion(), remote.slug()));
         return ProgressResultDialog.Outcome.silent();
     }
 
-    @SuppressWarnings("checkstyle:BooleanExpressionComplexity")
     static String buildBrowserUrl(String serverUrl, String scopeSlug, String projectSlug,
             String projectVersion, String slug) {
-        if (serverUrl == null || scopeSlug == null || projectSlug == null
-                || projectVersion == null || slug == null) {
-            return null;
-        }
         return serverUrl + SLASH + scopeSlug + SLASH + projectSlug + SLASH + projectVersion + SLASH + slug;
     }
 

@@ -9,14 +9,14 @@
  */
 package com.architeezy.archi.connector.ui.wizards;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.core.runtime.OperationCanceledException;
+import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.viewers.LabelProvider;
@@ -28,12 +28,13 @@ import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Text;
 
 import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
+import com.architeezy.archi.connector.api.dto.PagedResult;
 import com.architeezy.archi.connector.api.dto.RemoteProject;
+import com.architeezy.archi.connector.auth.ConnectionProfile;
 
 /**
  * Wizard page for selecting the target project during model export.
@@ -46,8 +47,6 @@ public class ProjectSelectionPage extends WizardPage {
     private ListViewer listViewer;
 
     private List<RemoteProject> allProjects = Collections.emptyList();
-
-    private Job loadJob;
 
     /**
      * Default constructor.
@@ -107,30 +106,48 @@ public class ProjectSelectionPage extends WizardPage {
             setMessage(Messages.ProjectPage_noProfile, ERROR);
             return;
         }
-        if (loadJob != null) {
-            loadJob.cancel();
-        }
         setMessage(Messages.ProjectPage_loading);
         listViewer.setInput(Collections.emptyList());
-        loadJob = new Job(Messages.ProjectPage_loadingJob) {
-
-            @Override
-            protected IStatus run(IProgressMonitor monitor) {
-                try {
-                    var projects = ConnectorPlugin.getInstance().services().repositoryService().listProjects(profile);
-                    Display.getDefault().asyncExec(() -> updateUiWithProjects(projects));
-                } catch (Exception ex) {
-                    Display.getDefault().asyncExec(() -> {
-                        if (!getControl().isDisposed()) {
-                            setMessage(NLS.bind(Messages.ProjectPage_loadError, ex.getMessage()), ERROR);
-                        }
-                    });
-                }
-                return Status.OK_STATUS;
+        var loaded = new ArrayList<RemoteProject>();
+        try {
+            getContainer().run(true, true, monitor -> loadAllProjectPages(profile, loaded, monitor));
+            updateUiWithProjects(loaded);
+        } catch (InvocationTargetException e) {
+            if (!getControl().isDisposed()) {
+                var cause = e.getCause();
+                setMessage(NLS.bind(Messages.ProjectPage_loadError,
+                        cause != null ? cause.getMessage() : e.getMessage()), ERROR);
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
-        };
-        loadJob.schedule();
+    private void loadAllProjectPages(ConnectionProfile profile, List<RemoteProject> out, IProgressMonitor monitor)
+            throws InvocationTargetException {
+        var progress = SubMonitor.convert(monitor, Messages.ProjectPage_loadingJob, 1);
+        try {
+            var service = ConnectorPlugin.getInstance().services().repositoryService();
+            int page = 0;
+            PagedResult<RemoteProject> result = service.listProjects(profile, page);
+            out.addAll(result.items());
+            int totalPages = Math.max(result.totalPages(), 1);
+            progress.setWorkRemaining(totalPages);
+            progress.worked(1);
+            while (result.hasMore()) {
+                if (progress.isCanceled()) {
+                    throw new OperationCanceledException();
+                }
+                page++;
+                result = service.listProjects(profile, page);
+                out.addAll(result.items());
+                progress.worked(1);
+            }
+        } catch (OperationCanceledException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new InvocationTargetException(e);
+        }
     }
 
     private void updateUiWithProjects(List<RemoteProject> projects) {
