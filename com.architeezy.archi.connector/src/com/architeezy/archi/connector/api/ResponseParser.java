@@ -9,6 +9,11 @@
  */
 package com.architeezy.archi.connector.api;
 
+import static com.architeezy.archi.connector.api.JsonObjects.extractTopLevelObject;
+import static com.architeezy.archi.connector.api.JsonObjects.extractTopLevelString;
+import static com.architeezy.archi.connector.api.JsonObjects.extractTopLevelValue;
+import static com.architeezy.archi.connector.api.JsonObjects.findMatchingBracket;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -76,67 +81,95 @@ final class ResponseParser {
      * @return parsed model
      */
     static RemoteModel parseModel(String json) {
-        var id = OAuthManager.extractJsonString(json, "id"); //$NON-NLS-1$
-        var name = OAuthManager.extractJsonString(json, "name"); //$NON-NLS-1$
-        var description = OAuthManager.extractJsonString(json, "description"); //$NON-NLS-1$
-        var author = OAuthManager.extractJsonString(json, "author"); //$NON-NLS-1$
-        var lastModified = OAuthManager.extractJsonString(json, "lastModificationDateTime"); //$NON-NLS-1$
-        var slug = OAuthManager.extractJsonString(json, "slug"); //$NON-NLS-1$
-        var projectSlug = OAuthManager.extractJsonString(json, "projectSlug"); //$NON-NLS-1$
-        var projectVersion = OAuthManager.extractJsonString(json, "projectVersion"); //$NON-NLS-1$
-        var scopeSlug = OAuthManager.extractJsonString(json, "scopeSlug"); //$NON-NLS-1$
+        final var id = extractTopLevelString(json, "id"); //$NON-NLS-1$
+        final var name = extractTopLevelString(json, "name"); //$NON-NLS-1$
+        final var description = extractTopLevelString(json, "description"); //$NON-NLS-1$
+        final var lastModified = extractTopLevelString(json, "lastModificationDateTime"); //$NON-NLS-1$
+        final var slug = extractTopLevelString(json, "slug"); //$NON-NLS-1$
+
+        String projectSlug = null;
+        String projectVersion = null;
+        String projectName = null;
+        final var projectBlock = extractTopLevelObject(json, "project"); //$NON-NLS-1$
+        if (projectBlock != null) {
+            projectSlug = OAuthManager.extractJsonString(projectBlock, "slug"); //$NON-NLS-1$
+            projectVersion = OAuthManager.extractJsonString(projectBlock, "version"); //$NON-NLS-1$
+            projectName = OAuthManager.extractJsonString(projectBlock, "name"); //$NON-NLS-1$
+        }
+
+        String scopeSlug = null;
+        String scopeName = null;
+        final var scopeBlock = extractTopLevelObject(json, "scope"); //$NON-NLS-1$
+        if (scopeBlock != null) {
+            scopeSlug = OAuthManager.extractJsonString(scopeBlock, "slug"); //$NON-NLS-1$
+            scopeName = OAuthManager.extractJsonString(scopeBlock, "name"); //$NON-NLS-1$
+        }
+
+        String author = null;
+        var creatorBlock = extractTopLevelObject(json, "creator"); //$NON-NLS-1$
+        if (creatorBlock != null) {
+            author = OAuthManager.extractJsonString(creatorBlock, "name"); //$NON-NLS-1$
+        }
 
         String selfUrl = null;
         String contentUrl = null;
-
-        var linksIdx = json.indexOf("\"_links\""); //$NON-NLS-1$
-        if (linksIdx >= 0) {
-            var linksEnd = findMatchingBracket(json, json.indexOf('{', linksIdx), '{', '}');
-            var linksBlock = json.substring(linksIdx, linksEnd + 1);
-
-            // Extract _links.self.href
-            var selfIdx = linksBlock.indexOf("\"self\""); //$NON-NLS-1$
+        final var linksBlock = extractTopLevelObject(json, "_links"); //$NON-NLS-1$
+        if (linksBlock != null) {
+            final var selfIdx = linksBlock.indexOf("\"self\""); //$NON-NLS-1$
             if (selfIdx >= 0) {
                 selfUrl = OAuthManager.extractJsonString(linksBlock.substring(selfIdx), "href"); //$NON-NLS-1$
             }
 
-            // Extract _links.content[] entry with title "ArchiMate"
-            var contentIdx = linksBlock.indexOf("\"content\""); //$NON-NLS-1$
-            if (contentIdx >= 0) {
-                var arrStart = linksBlock.indexOf('[', contentIdx);
-                if (arrStart >= 0) {
-                    var arrEnd = findMatchingBracket(linksBlock, arrStart, '[', ']');
-                    if (arrEnd > arrStart) {
-                        var arrContent = linksBlock.substring(arrStart + 1, arrEnd);
-                        contentUrl = extractArchiMateHref(arrContent);
-                    }
+            // _links.content may be an array (multiple formats with titles) or a
+            // single object pointing at the model's binary content endpoint.
+            final var contentRaw = extractTopLevelValue(linksBlock, "content"); //$NON-NLS-1$
+            if (contentRaw != null && !contentRaw.isEmpty()) {
+                if (contentRaw.charAt(0) == '[') {
+                    contentUrl = extractContentHref(contentRaw.substring(1, contentRaw.length() - 1));
+                } else if (contentRaw.charAt(0) == '{') {
+                    contentUrl = stripTemplate(OAuthManager.extractJsonString(contentRaw, "href")); //$NON-NLS-1$
                 }
             }
         }
+
+        if (contentUrl == null && selfUrl != null) {
+            contentUrl = selfUrl + "/content?format=archimate"; //$NON-NLS-1$
+        }
+
         return new RemoteModel(id, name, description, author, lastModified, selfUrl, contentUrl,
-                slug, projectSlug, projectVersion, scopeSlug);
+                slug, projectSlug, projectVersion, scopeSlug, projectName, scopeName);
     }
 
-    private static String extractArchiMateHref(String contentArray) {
+    private static String extractContentHref(String contentArray) {
+        String firstHref = null;
         var objStart = contentArray.indexOf('{');
         while (objStart >= 0) {
             var objEnd = findMatchingBracket(contentArray, objStart, '{', '}');
             if (objEnd < 0) {
-                return null;
+                return firstHref;
             }
             var obj = contentArray.substring(objStart, objEnd + 1);
             var title = OAuthManager.extractJsonString(obj, "title"); //$NON-NLS-1$
-            if ("ArchiMate".equals(title)) { //$NON-NLS-1$
-                var href = OAuthManager.extractJsonString(obj, "href"); //$NON-NLS-1$
-                if (href != null) {
-                    // Strip URI template suffix, e.g. "{&inline}"
-                    var templateIdx = href.indexOf('{');
-                    return templateIdx >= 0 ? href.substring(0, templateIdx) : href;
+            var href = stripTemplate(OAuthManager.extractJsonString(obj, "href")); //$NON-NLS-1$
+            if (href != null) {
+                if ("ArchiMate".equals(title)) { //$NON-NLS-1$
+                    return href;
+                }
+                if (firstHref == null) {
+                    firstHref = href;
                 }
             }
             objStart = contentArray.indexOf('{', objEnd + 1);
         }
-        return null;
+        return firstHref;
+    }
+
+    private static String stripTemplate(String href) {
+        if (href == null) {
+            return null;
+        }
+        var templateIdx = href.indexOf('{');
+        return templateIdx >= 0 ? href.substring(0, templateIdx) : href;
     }
 
     /**
@@ -193,59 +226,27 @@ final class ResponseParser {
     private static void parseProjectArray(String arrayContent, List<RemoteProject> out) {
         var objStart = arrayContent.indexOf('{');
         while (objStart >= 0) {
-            var objEnd = findMatchingBracket(arrayContent, objStart, '{', '}');
+            final var objEnd = findMatchingBracket(arrayContent, objStart, '{', '}');
             if (objEnd < 0) {
                 return;
             }
-            var obj = arrayContent.substring(objStart, objEnd + 1);
-            var id = OAuthManager.extractJsonString(obj, "id"); //$NON-NLS-1$
-            var name = OAuthManager.extractJsonString(obj, "name"); //$NON-NLS-1$
+            final var obj = arrayContent.substring(objStart, objEnd + 1);
+            // Top-level extraction skips nested scope.{id,name} and other embedded
+            // references that share field names with the project itself.
+            final var id = extractTopLevelString(obj, "id"); //$NON-NLS-1$
+            final var name = extractTopLevelString(obj, "name"); //$NON-NLS-1$
+            String scopeId = null;
+            String scopeName = null;
+            final var scopeBlock = extractTopLevelObject(obj, "scope"); //$NON-NLS-1$
+            if (scopeBlock != null) {
+                scopeId = OAuthManager.extractJsonString(scopeBlock, "id"); //$NON-NLS-1$
+                scopeName = OAuthManager.extractJsonString(scopeBlock, "name"); //$NON-NLS-1$
+            }
             if (id != null) {
-                out.add(new RemoteProject(id, name));
+                out.add(new RemoteProject(id, name, scopeId, scopeName));
             }
             objStart = arrayContent.indexOf('{', objEnd + 1);
         }
-    }
-
-    /**
-     * Finds the closing bracket matching the opening bracket at {@code start}.
-     *
-     * @param s the string to search
-     * @param start index of the opening bracket
-     * @param open the opening bracket character
-     * @param close the closing bracket character
-     * @return index of the matching closing bracket, or {@code -1} if not found
-     */
-    private static int findMatchingBracket(String s, int start, char open, char close) {
-        var depth = 0;
-        var inString = false;
-        for (int i = start; i < s.length(); i++) {
-            var c = s.charAt(i);
-            if (isQuoteToggle(s, i, c)) {
-                inString = !inString;
-            }
-            if (!inString) {
-                depth += bracketDelta(c, open, close);
-                if (depth == 0) {
-                    return i;
-                }
-            }
-        }
-        return -1;
-    }
-
-    private static boolean isQuoteToggle(String s, int i, char c) {
-        return c == '"' && (i == 0 || s.charAt(i - 1) != '\\');
-    }
-
-    private static int bracketDelta(char c, char open, char close) {
-        if (c == open) {
-            return 1;
-        }
-        if (c == close) {
-            return -1;
-        }
-        return 0;
     }
 
 }

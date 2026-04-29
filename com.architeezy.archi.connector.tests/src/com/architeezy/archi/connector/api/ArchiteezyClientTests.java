@@ -200,7 +200,8 @@ class ArchiteezyClientTests {
         var payload = new byte[] {1, 2, 3, 4, 5};
         onPath("/content/abc", 200, "application/octet-stream", payload);
 
-        var body = client.getModelContent("tkn", baseUrl + "/content/abc");
+        var body = client.getModelContent("tkn", baseUrl + "/content/abc",
+                com.architeezy.archi.connector.api.CancelSignal.NEVER);
 
         assertEquals(5, body.length);
         assertEquals(1, body[0]);
@@ -211,7 +212,8 @@ class ArchiteezyClientTests {
     void getModelContentOmitsAuthHeaderForBlankToken() throws Exception {
         onPath("/public/abc", 200, "application/octet-stream", new byte[] {9});
 
-        client.getModelContent("", baseUrl + "/public/abc");
+        client.getModelContent("", baseUrl + "/public/abc",
+                com.architeezy.archi.connector.api.CancelSignal.NEVER);
 
         assertNull(header(requests.get(0), "Authorization"),
                 "Authorization header must be absent for blank token");
@@ -238,52 +240,6 @@ class ArchiteezyClientTests {
                 () -> client.deleteModel("tkn", baseUrl + "/api/models/missing"));
         assertEquals(404, ex.getStatusCode());
         assertTrue(ex.isNotFound());
-    }
-
-    // createModel ----------------------------------------------------------
-
-    @Test
-    void createModelPostsJsonBody() throws Exception {
-        var response = """
-                {"id":"n","name":"New","_links":{"self":{"href":"%s/api/models/n"}}}
-                """.formatted(baseUrl);
-        onPath("/api/models", 201, "application/hal+json", response);
-
-        var created = client.createModel(baseUrl, "tkn", "New", "desc");
-
-        assertEquals("n", created.id());
-        var req = requests.get(0);
-        assertEquals("POST", req.method());
-        assertEquals("application/json", header(req, "Content-Type"));
-        var body = new String(req.body(), StandardCharsets.UTF_8);
-        assertTrue(body.contains("\"name\":\"New\""), body);
-        assertTrue(body.contains("\"description\":\"desc\""), body);
-    }
-
-    @Test
-    void createModelEscapesQuotesInJsonBody() throws Exception {
-        onPath("/api/models", 201, "application/hal+json", """
-                {"id":"n","name":"x","_links":{"self":{"href":"%s/api/models/n"}}}
-                """.formatted(baseUrl));
-
-        client.createModel(baseUrl, "tkn", "Na\"me", "d\\esc");
-
-        var body = new String(requests.get(0).body(), StandardCharsets.UTF_8);
-        assertTrue(body.contains("\"Na\\\"me\""), body);
-        assertTrue(body.contains("\"d\\\\esc\""), body);
-    }
-
-    @Test
-    void createModelRendersNullDescriptionAsJsonNull() throws Exception {
-        onPath("/api/models", 201, "application/hal+json", """
-                {"id":"n","name":"X","_links":{"self":{"href":"%s/api/models/n"}}}
-                """.formatted(baseUrl));
-
-        client.createModel(baseUrl, "tkn", "X", null);
-
-        var body = new String(requests.get(0).body(), StandardCharsets.UTF_8);
-        assertTrue(body.contains("\"name\":\"X\""), body);
-        assertTrue(body.contains("\"description\":null"), body);
     }
 
     // pushModelContent -----------------------------------------------------

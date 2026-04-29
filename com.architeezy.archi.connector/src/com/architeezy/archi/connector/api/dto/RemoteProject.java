@@ -12,10 +12,23 @@ package com.architeezy.archi.connector.api.dto;
 /**
  * A project on the Architeezy server.
  *
- * @param id the id
- * @param name the name
+ * @param id the project id
+ * @param name the project name
+ * @param scopeId id of the owning scope, or {@code null} if not provided
+ * @param scopeName name of the owning scope, or {@code null} if not provided
  */
-public record RemoteProject(String id, String name) {
+public record RemoteProject(String id, String name, String scopeId, String scopeName) {
+
+    /**
+     * Convenience constructor for callers (mostly tests) that do not need the
+     * owning scope reference.
+     *
+     * @param id the project id
+     * @param name the project name
+     */
+    public RemoteProject(String id, String name) {
+        this(id, name, null, null);
+    }
 
     @Override
     public String toString() {

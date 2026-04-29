@@ -29,9 +29,11 @@ Individual resource objects include a `_links` section with navigation relations
 extracts the following link relations from model objects:
 
 - `self` — the model's canonical API URL, used for updates and deletion.
-- `content` — the URL for the model's binary content. When multiple content links exist (e.g., for
-  different formats), the plugin selects the one with `"title": "ArchiMate"`. URI template suffixes
-  (e.g., `{&inline}`) are stripped before use.
+- `content` — the URL for the model's binary content. The relation may be rendered either as a
+  single link (the `/api/models/{id}/content` endpoint) or as an array of per-format entries; when
+  multiple are present the plugin prefers `"title": "ArchiMate"`. URI template suffixes (e.g.,
+  `{?format,inline}` or `{&inline}`) are stripped before use. If the link is missing entirely the
+  plugin falls back to `${self}/content?format=archimate`.
 
 ## Endpoints
 
@@ -45,8 +47,11 @@ extracts the following link relations from model objects:
 | **Auth Required** | Depends on server configuration                |
 | **Response**      | HAL collection; models in `_embedded.models[]` |
 
-Each model object contains: `id`, `name`, `description`, `author`, `lastModified`, and `_links` with
-`self` and `content` relations.
+Each model object contains: `id`, `slug`, `name`, `description`, `lastModificationDateTime`, plus
+nested entity references `scope` (`{id, slug, name}`), `project` (`{id, slug, version, name}`) and
+`creator` (`{id, name}`), and `_links` with `self` and `content` relations. The plugin reads the
+creator's `name` as the displayed author and keeps the project/scope slugs around to build the
+browser URL.
 
 ### Get Model Metadata
 

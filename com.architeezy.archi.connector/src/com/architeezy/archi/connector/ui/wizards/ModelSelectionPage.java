@@ -13,22 +13,19 @@ import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.SubMonitor;
-import org.eclipse.jface.layout.TableColumnLayout;
-import org.eclipse.jface.viewers.ArrayContentProvider;
+import org.eclipse.jface.layout.TreeColumnLayout;
+import org.eclipse.jface.viewers.ColumnLabelProvider;
 import org.eclipse.jface.viewers.ColumnPixelData;
 import org.eclipse.jface.viewers.ColumnWeightData;
 import org.eclipse.jface.viewers.IStructuredSelection;
-import org.eclipse.jface.viewers.ITableLabelProvider;
-import org.eclipse.jface.viewers.LabelProvider;
-import org.eclipse.jface.viewers.TableViewer;
-import org.eclipse.jface.viewers.Viewer;
-import org.eclipse.jface.viewers.ViewerComparator;
+import org.eclipse.jface.viewers.TreeViewer;
+import org.eclipse.jface.viewers.TreeViewerColumn;
 import org.eclipse.jface.wizard.WizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
@@ -40,9 +37,9 @@ import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Table;
-import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.Tree;
+import org.eclipse.swt.widgets.TreeColumn;
 
 import com.archimatetool.editor.ArchiPlugin;
 import com.architeezy.archi.connector.ConnectorPlugin;
@@ -52,19 +49,23 @@ import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
 import com.architeezy.archi.connector.auth.ProfileStatus;
 import com.architeezy.archi.connector.io.FileNames;
+import com.architeezy.archi.connector.ui.wizards.ModelTreeNodes.ProjectNode;
+import com.architeezy.archi.connector.ui.wizards.ModelTreeNodes.ScopeNode;
 import com.architeezy.archi.connector.util.DateFormats;
 
 /**
- * Page for selecting a remote model to import.
+ * Page for selecting a remote model to import. Models are arranged in a
+ * {@code scope → project → model} tree.
  */
-@SuppressWarnings({ "checkstyle:MagicNumber", "checkstyle:ClassDataAbstractionCoupling" })
+@SuppressWarnings({ "checkstyle:MagicNumber", "checkstyle:ClassDataAbstractionCoupling",
+        "checkstyle:ClassFanOutComplexity" })
 public class ModelSelectionPage extends WizardPage {
 
     private static final String ARCHIMATE_EXTENSION = ".archimate";
 
     private Text searchField;
 
-    private TableViewer tableViewer;
+    private TreeViewer treeViewer;
 
     private Text savePathText;
 
@@ -87,7 +88,7 @@ public class ModelSelectionPage extends WizardPage {
         setControl(container);
 
         createSearchBar(container);
-        createTable(container);
+        createTree(container);
         createSaveAsRow(container);
     }
 
@@ -109,54 +110,58 @@ public class ModelSelectionPage extends WizardPage {
         search.addModifyListener((ModifyListener) e -> applyFilter(search.getText()));
     }
 
-    private void createTable(Composite parent) {
-        var tableHolder = new Composite(parent, SWT.NONE);
+    private void createTree(Composite parent) {
+        var treeHolder = new Composite(parent, SWT.NONE);
         var gd = new GridData(SWT.FILL, SWT.FILL, true, true);
         gd.heightHint = 250;
-        tableHolder.setLayoutData(gd);
-        var tableLayout = new TableColumnLayout();
-        tableHolder.setLayout(tableLayout);
+        treeHolder.setLayoutData(gd);
+        var treeLayout = new TreeColumnLayout();
+        treeHolder.setLayout(treeLayout);
 
-        var table = new Table(tableHolder, SWT.BORDER | SWT.FULL_SELECTION | SWT.SINGLE | SWT.V_SCROLL);
-        table.setHeaderVisible(true);
-        table.setLinesVisible(true);
+        var tree = new Tree(treeHolder, SWT.BORDER | SWT.FULL_SELECTION | SWT.SINGLE | SWT.V_SCROLL);
+        tree.setHeaderVisible(true);
+        tree.setLinesVisible(true);
 
-        var colName = new TableColumn(table, SWT.NONE);
-        colName.setText(Messages.ModelPage_columnName);
-        tableLayout.setColumnData(colName, new ColumnWeightData(1, 200, true));
+        treeViewer = new TreeViewer(tree);
+        treeViewer.setContentProvider(new ModelTreeContentProvider());
 
-        var colModified = new TableColumn(table, SWT.NONE);
-        colModified.setText(Messages.ModelPage_columnLastModified);
-        tableLayout.setColumnData(colModified, new ColumnPixelData(200, true, false));
+        var nameCol = new TreeViewerColumn(treeViewer, SWT.NONE);
+        nameCol.getColumn().setText(Messages.ModelPage_columnName);
+        treeLayout.setColumnData(nameCol.getColumn(), new ColumnWeightData(1, 200, true));
+        nameCol.setLabelProvider(new NameColumnLabelProvider());
 
-        tableViewer = new TableViewer(table);
-        tableViewer.setContentProvider(ArrayContentProvider.getInstance());
-        tableViewer.setLabelProvider(new ModelTableLabelProvider());
-        tableViewer.addSelectionChangedListener(e -> onSelectionChanged());
+        var modifiedCol = new TreeViewerColumn(treeViewer, SWT.NONE);
+        modifiedCol.getColumn().setText(Messages.ModelPage_columnLastModified);
+        treeLayout.setColumnData(modifiedCol.getColumn(), new ColumnPixelData(200, true, false));
+        modifiedCol.setLabelProvider(new LastModifiedColumnLabelProvider());
 
-        var comparator = new ModelColumnComparator();
-        tableViewer.setComparator(comparator);
-        colName.addSelectionListener(SelectionListener.widgetSelectedAdapter(
-                e -> toggleSort(comparator, colName, ModelColumnComparator.BY_NAME)));
-        colModified.addSelectionListener(SelectionListener.widgetSelectedAdapter(
-                e -> toggleSort(comparator, colModified, ModelColumnComparator.BY_MODIFIED)));
-        table.setSortColumn(colName);
-        table.setSortDirection(SWT.UP);
-        comparator.setSort(ModelColumnComparator.BY_NAME, false);
+        treeViewer.addSelectionChangedListener(e -> onSelectionChanged());
+
+        // Sort the leaf models within each project by name; clicking the column
+        // header flips ascending/descending. Branch order keeps the server's
+        // listing order.
+        SelectionListener nameSort = SelectionListener.widgetSelectedAdapter(
+                e -> toggleSort(nameCol.getColumn(), true));
+        SelectionListener modifiedSort = SelectionListener.widgetSelectedAdapter(
+                e -> toggleSort(modifiedCol.getColumn(), false));
+        nameCol.getColumn().addSelectionListener(nameSort);
+        modifiedCol.getColumn().addSelectionListener(modifiedSort);
+        tree.setSortColumn(nameCol.getColumn());
+        tree.setSortDirection(SWT.UP);
     }
 
-    private void toggleSort(ModelColumnComparator comparator, TableColumn column, int columnId) {
-        var table = tableViewer.getTable();
+    private void toggleSort(TreeColumn column, boolean byName) {
+        var tree = treeViewer.getTree();
         boolean descending;
-        if (table.getSortColumn() == column) {
-            descending = table.getSortDirection() != SWT.DOWN;
+        if (tree.getSortColumn() == column) {
+            descending = tree.getSortDirection() != SWT.DOWN;
         } else {
             descending = false;
         }
-        comparator.setSort(columnId, descending);
-        table.setSortColumn(column);
-        table.setSortDirection(descending ? SWT.DOWN : SWT.UP);
-        tableViewer.refresh();
+        tree.setSortColumn(column);
+        tree.setSortDirection(descending ? SWT.DOWN : SWT.UP);
+        ((ModelTreeContentProvider) treeViewer.getContentProvider()).setSort(byName, descending);
+        treeViewer.refresh();
     }
 
     private void createSaveAsRow(Composite parent) {
@@ -185,7 +190,7 @@ public class ModelSelectionPage extends WizardPage {
             return;
         }
         setMessage(Messages.ModelPage_loading);
-        tableViewer.setInput(Collections.emptyList());
+        treeViewer.setInput(Collections.emptyList());
         var loaded = new ArrayList<RemoteModel>();
         try {
             getContainer().run(true, true, monitor -> loadAllModelPages(profile, loaded, monitor));
@@ -245,18 +250,75 @@ public class ModelSelectionPage extends WizardPage {
     }
 
     private void applyFilter(String query) {
+        final List<RemoteModel> visible;
         if (query == null || query.isBlank()) {
-            tableViewer.setInput(allModels);
+            visible = allModels;
         } else {
             String lc = query.toLowerCase();
-            var filtered = new ArrayList<RemoteModel>();
+            visible = new ArrayList<>();
             for (var m : allModels) {
-                if (m.name() != null && m.name().toLowerCase().contains(lc)) {
-                    filtered.add(m);
+                if (matches(m, lc)) {
+                    visible.add(m);
                 }
             }
-            tableViewer.setInput(filtered);
         }
+        treeViewer.setInput(buildTree(visible));
+        treeViewer.expandAll();
+    }
+
+    /**
+     * A model is kept when the query is contained in any text on its path —
+     * scope, project, or model. A hit anywhere up the path pulls the whole
+     * branch into view, so e.g. typing a scope name lists every model under it.
+     *
+     * @param m the model to test
+     * @param lcQuery the search query, already lower-cased
+     * @return {@code true} if any name or slug along the model's path contains the query
+     */
+    static boolean matches(RemoteModel m, String lcQuery) {
+        return containsLc(m.name(), lcQuery)
+                || containsLc(m.slug(), lcQuery)
+                || containsLc(m.projectName(), lcQuery)
+                || containsLc(m.projectSlug(), lcQuery)
+                || containsLc(m.scopeName(), lcQuery)
+                || containsLc(m.scopeSlug(), lcQuery);
+    }
+
+    private static boolean containsLc(String haystack, String lcNeedle) {
+        return haystack != null && haystack.toLowerCase().contains(lcNeedle);
+    }
+
+    /**
+     * Groups models into {@code scope → project → model}, preserving the
+     * server-supplied ordering of the input list within each level.
+     *
+     * @param models the flat list of models from the server
+     * @return the root list of scope nodes
+     */
+    static List<ScopeNode> buildTree(List<RemoteModel> models) {
+        var scopes = new LinkedHashMap<String, ScopeNode>();
+        for (var m : models) {
+            var scopeKey = m.scopeSlug() != null ? m.scopeSlug()
+                    : (m.scopeName() != null ? "name:" + m.scopeName() : "__none__"); //$NON-NLS-1$ //$NON-NLS-2$
+            var scopeLabel = m.scopeName() != null ? m.scopeName()
+                    : (m.scopeSlug() != null ? m.scopeSlug() : Messages.ModelPage_unknownScope);
+            var scope = scopes.computeIfAbsent(scopeKey,
+                    k -> new ScopeNode(scopeLabel, new LinkedHashMap<String, ProjectNode>()));
+
+            var projectKey = (m.projectSlug() != null ? m.projectSlug() : "__none__") //$NON-NLS-1$
+                    + "@" + (m.projectVersion() != null ? m.projectVersion() : ""); //$NON-NLS-1$ //$NON-NLS-2$
+            var projectLabel = projectLabel(m);
+            var project = scope.projects().computeIfAbsent(projectKey,
+                    k -> new ProjectNode(projectLabel, new ArrayList<>()));
+            project.models().add(m);
+        }
+        return new ArrayList<>(scopes.values());
+    }
+
+    private static String projectLabel(RemoteModel m) {
+        var name = m.projectName() != null ? m.projectName()
+                : (m.projectSlug() != null ? m.projectSlug() : Messages.ModelPage_unknownProject);
+        return m.projectVersion() != null ? name + " (" + m.projectVersion() + ")" : name; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
     private void browse() {
@@ -347,7 +409,7 @@ public class ModelSelectionPage extends WizardPage {
      * @return the selected {@link RemoteModel}, or {@code null} if none is selected
      */
     public RemoteModel getSelectedModel() {
-        var sel = (IStructuredSelection) tableViewer.getSelection();
+        var sel = (IStructuredSelection) treeViewer.getSelection();
         if (sel == null || sel.isEmpty()) {
             return null;
         }
@@ -367,59 +429,34 @@ public class ModelSelectionPage extends WizardPage {
     }
 
     // -----------------------------------------------------------------------
+    // JFace label providers
 
-    private static final class ModelTableLabelProvider extends LabelProvider implements ITableLabelProvider {
+    private static final class NameColumnLabelProvider extends ColumnLabelProvider {
 
         @Override
-        public String getColumnText(Object element, int columnIndex) {
-            if (!(element instanceof RemoteModel m)) {
-                return ""; //$NON-NLS-1$
+        public String getText(Object element) {
+            if (element instanceof ScopeNode scope) {
+                return scope.label();
             }
-            return switch (columnIndex) {
-            case 0 -> m.name() != null ? m.name() : m.id();
-            case 1 -> DateFormats.formatIsoDateTime(m.lastModified());
-            default -> ""; //$NON-NLS-1$
-            };
-        }
-
-        @Override
-        public org.eclipse.swt.graphics.Image getColumnImage(Object element, int columnIndex) {
-            return null;
+            if (element instanceof ProjectNode project) {
+                return project.label();
+            }
+            if (element instanceof RemoteModel m) {
+                return m.name() != null ? m.name() : m.id();
+            }
+            return ""; //$NON-NLS-1$
         }
 
     }
 
-    private static final class ModelColumnComparator extends ViewerComparator {
-
-        static final int BY_NAME = 0;
-
-        static final int BY_MODIFIED = 1;
-
-        private static final Comparator<String> NULLS_LAST_CI = Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
-
-        private int column = BY_NAME;
-
-        private boolean descending;
-
-        void setSort(int columnId, boolean desc) {
-            this.column = columnId;
-            this.descending = desc;
-        }
+    private static final class LastModifiedColumnLabelProvider extends ColumnLabelProvider {
 
         @Override
-        public int compare(Viewer viewer, Object e1, Object e2) {
-            if (!(e1 instanceof RemoteModel a) || !(e2 instanceof RemoteModel b)) {
-                return 0;
+        public String getText(Object element) {
+            if (element instanceof RemoteModel m) {
+                return DateFormats.formatIsoDateTime(m.lastModified());
             }
-            int cmp = switch (column) {
-            case BY_MODIFIED -> NULLS_LAST_CI.compare(a.lastModified(), b.lastModified());
-            default -> NULLS_LAST_CI.compare(displayName(a), displayName(b));
-            };
-            return descending ? -cmp : cmp;
-        }
-
-        private static String displayName(RemoteModel m) {
-            return m.name() != null ? m.name() : m.id();
+            return ""; //$NON-NLS-1$
         }
 
     }

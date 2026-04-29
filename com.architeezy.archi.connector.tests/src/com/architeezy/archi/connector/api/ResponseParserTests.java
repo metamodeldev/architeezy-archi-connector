@@ -20,9 +20,12 @@ class ResponseParserTests {
 
     private static final String MODEL_WITH_ARCHIMATE_LINK = "{"
             + "\"id\":\"m1\","
+            + "\"scope\":{\"id\":\"s1\",\"slug\":\"acme\",\"name\":\"ACME\"},"
+            + "\"project\":{\"id\":\"p1\",\"slug\":\"alpha\",\"version\":\"1.0\",\"name\":\"Alpha\"},"
+            + "\"slug\":\"first\","
             + "\"name\":\"First\","
             + "\"description\":\"desc\","
-            + "\"author\":\"alice\","
+            + "\"creator\":{\"id\":\"u1\",\"name\":\"alice\"},"
             + "\"lastModificationDateTime\":\"2026-04-01T10:00:00Z\","
             + "\"_links\":{"
             + "\"self\":{\"href\":\"https://srv/api/models/m1\"},"
@@ -38,26 +41,67 @@ class ResponseParserTests {
         var m = ResponseParser.parseModel(MODEL_WITH_ARCHIMATE_LINK);
         assertEquals("m1", m.id());
         assertEquals("First", m.name());
+        assertEquals("first", m.slug());
         assertEquals("desc", m.description());
         assertEquals("alice", m.author());
+        assertEquals("alpha", m.projectSlug());
+        assertEquals("1.0", m.projectVersion());
+        assertEquals("Alpha", m.projectName());
+        assertEquals("acme", m.scopeSlug());
+        assertEquals("ACME", m.scopeName());
         assertEquals("2026-04-01T10:00:00Z", m.lastModified());
         assertEquals("https://srv/api/models/m1", m.selfUrl());
         assertEquals("https://srv/api/models/m1/archimate", m.contentUrl());
     }
 
     @Test
-    void parseModelReturnsNullContentUrlWhenNoArchiMateLink() {
+    void parseModelDerivesContentUrlWhenNoContentLink() {
+        // When _links.content is absent, fall back to /content?format=archimate
+        // on the self URL — every model exposes that endpoint under the new API.
         var json = "{"
                 + "\"id\":\"m2\","
                 + "\"name\":\"Second\","
                 + "\"_links\":{"
-                + "\"self\":{\"href\":\"https://srv/api/models/m2\"},"
-                + "\"content\":[{\"title\":\"HTML\",\"href\":\"https://srv/api/models/m2/html\"}]"
+                + "\"self\":{\"href\":\"https://srv/api/models/m2\"}"
                 + "}"
                 + "}";
         var m = ResponseParser.parseModel(json);
         assertEquals("m2", m.id());
-        assertNull(m.contentUrl());
+        assertEquals("https://srv/api/models/m2/content?format=archimate", m.contentUrl());
+    }
+
+    @Test
+    void parseModelAcceptsContentLinkAsObject() {
+        var json = "{"
+                + "\"id\":\"m6\","
+                + "\"_links\":{"
+                + "\"self\":{\"href\":\"https://srv/api/models/m6\"},"
+                + "\"content\":{\"href\":\"https://srv/api/models/m6/content{?format,inline}\"}"
+                + "}"
+                + "}";
+        var m = ResponseParser.parseModel(json);
+        assertEquals("https://srv/api/models/m6/content", m.contentUrl());
+    }
+
+    @Test
+    void parseModelDoesNotMistakeNestedScopeIdForModelId() {
+        // Spring Data REST emits nested scope/project objects whose `id` and
+        // `name` keys precede the model's own keys in the JSON; the top-level
+        // extractor must skip them.
+        var json = "{"
+                + "\"scope\":{\"id\":\"scope-id\",\"slug\":\"sc\",\"name\":\"Scope name\"},"
+                + "\"project\":{\"id\":\"project-id\",\"slug\":\"pr\",\"version\":\"1\",\"name\":\"Project name\"},"
+                + "\"id\":\"model-id\","
+                + "\"slug\":\"model-slug\","
+                + "\"name\":\"Model name\""
+                + "}";
+        var m = ResponseParser.parseModel(json);
+        assertEquals("model-id", m.id());
+        assertEquals("Model name", m.name());
+        assertEquals("model-slug", m.slug());
+        assertEquals("sc", m.scopeSlug());
+        assertEquals("pr", m.projectSlug());
+        assertEquals("1", m.projectVersion());
     }
 
     @Test
@@ -89,17 +133,6 @@ class ResponseParserTests {
     }
 
     @Test
-    void parseModelPageSkipsModelsWithoutArchiMateLink() {
-        var json = "{\"_embedded\":{\"models\":["
-                + "{\"id\":\"no-link\",\"name\":\"x\",\"_links\":{\"self\":{\"href\":\"u\"}}},"
-                + MODEL_WITH_ARCHIMATE_LINK
-                + "]}}";
-        var page = ResponseParser.parseModelPage(json, 0);
-        assertEquals(1, page.items().size());
-        assertEquals("m1", page.items().get(0).id());
-    }
-
-    @Test
     void parseProjectListReadsHalEmbedded() {
         var json = "{\"_embedded\":{\"projects\":["
                 + "{\"id\":\"p1\",\"name\":\"Alpha\"},"
@@ -110,6 +143,52 @@ class ResponseParserTests {
         assertEquals("p1", list.get(0).id());
         assertEquals("Alpha", list.get(0).name());
         assertEquals("p2", list.get(1).id());
+    }
+
+    @Test
+    void parseProjectListExtractsScopeFromRealisticSpringDataRestPayload() {
+        // Realistic shape: project lists from Spring Data REST include the
+        // owning scope as a nested object alongside the project's own fields,
+        // followed by a _links block.
+        var json = "{\"_embedded\":{\"projects\":[{"
+                + "\"id\":\"p1\","
+                + "\"slug\":\"alpha\","
+                + "\"version\":\"1.0\","
+                + "\"name\":\"Alpha\","
+                + "\"description\":\"d\","
+                + "\"confidentiality\":0,"
+                + "\"previousVersionId\":null,"
+                + "\"creator\":{\"id\":\"u1\",\"name\":\"alice\"},"
+                + "\"creationDateTime\":\"2026-01-01T00:00:00Z\","
+                + "\"lastModifier\":{\"id\":\"u1\",\"name\":\"alice\"},"
+                + "\"lastModificationDateTime\":\"2026-01-02T00:00:00Z\","
+                + "\"archiver\":null,"
+                + "\"archivationDateTime\":null,"
+                + "\"scope\":{\"id\":\"s1\",\"slug\":\"acme\",\"name\":\"ACME\"},"
+                + "\"_links\":{\"self\":{\"href\":\"http://localhost/api/projects/p1\"}}"
+                + "}]}}";
+        var list = ResponseParser.parseProjectList(json);
+        assertEquals(1, list.size());
+        assertEquals("p1", list.get(0).id());
+        assertEquals("Alpha", list.get(0).name());
+        assertEquals("s1", list.get(0).scopeId());
+        assertEquals("ACME", list.get(0).scopeName());
+    }
+
+    @Test
+    void parseProjectListIgnoresNestedScopeIdAndName() {
+        // Each project now embeds a `scope` reference whose id/name keys
+        // appear before the project's own — make sure we skip them and
+        // capture them as scopeId / scopeName instead.
+        var json = "{\"_embedded\":{\"projects\":["
+                + "{\"scope\":{\"id\":\"scope-1\",\"name\":\"Scope\"},\"id\":\"project-1\",\"name\":\"Alpha\"}"
+                + "]}}";
+        var list = ResponseParser.parseProjectList(json);
+        assertEquals(1, list.size());
+        assertEquals("project-1", list.get(0).id());
+        assertEquals("Alpha", list.get(0).name());
+        assertEquals("scope-1", list.get(0).scopeId());
+        assertEquals("Scope", list.get(0).scopeName());
     }
 
     @Test

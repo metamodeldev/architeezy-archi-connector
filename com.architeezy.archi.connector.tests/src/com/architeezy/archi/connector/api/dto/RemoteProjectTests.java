@@ -32,4 +32,11 @@ class RemoteProjectTests {
         assertEquals("name", p.name());
     }
 
+    @Test
+    void scopeReferenceIsCaptured() {
+        var p = new RemoteProject("id", "name", "scope-1", "Scope One");
+        assertEquals("scope-1", p.scopeId());
+        assertEquals("Scope One", p.scopeName());
+    }
+
 }

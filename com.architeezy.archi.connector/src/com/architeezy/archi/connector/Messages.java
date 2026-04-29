@@ -113,6 +113,12 @@ public final class Messages extends NLS {
 
     public static String ProjectPage_loadError;
 
+    public static String ProjectPage_unknownScope;
+
+    public static String ModelPage_unknownScope;
+
+    public static String ModelPage_unknownProject;
+
     // ImportWizard
     public static String ImportWizard_title;
 

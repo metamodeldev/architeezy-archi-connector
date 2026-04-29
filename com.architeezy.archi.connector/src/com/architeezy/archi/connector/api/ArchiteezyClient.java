@@ -9,7 +9,6 @@
  */
 package com.architeezy.archi.connector.api;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -41,10 +41,6 @@ public class ArchiteezyClient {
 
     private static final String MSG_REQUEST_FAILED = "Request failed: "; //$NON-NLS-1$
 
-    private static final String BOUNDARY_SEPARATOR = "--"; //$NON-NLS-1$
-
-    private static final String QUOTE = "\""; //$NON-NLS-1$
-
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
@@ -52,6 +48,14 @@ public class ArchiteezyClient {
     private static final Duration TRANSFER_TIMEOUT = Duration.ofSeconds(120);
 
     private static final long CANCEL_POLL_INTERVAL_MS = 100L;
+
+    /**
+     * URL-encoded value of the ArchiMate model content type. The model listing
+     * endpoint accepts a {@code contentType} query parameter; pinning it to
+     * ArchiMate keeps non-ArchiMate models (e.g. BPMN) out of the import wizard.
+     */
+    private static final String ARCHIMATE_CONTENT_TYPE_FILTER =
+            "&contentType=http%3A%2F%2Fwww.archimatetool.com%2Farchimate%23ArchimateModel"; //$NON-NLS-1$
 
     private final HttpClient http = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -73,7 +77,8 @@ public class ArchiteezyClient {
      */
     public PagedResult<RemoteModel> listModels(String serverUrl, String accessToken, int page, int size)
             throws ApiException {
-        var url = serverUrl + "/api/models?page=" + page + "&size=" + size; //$NON-NLS-1$ //$NON-NLS-2$
+        var url = serverUrl + "/api/models?page=" + page + "&size=" + size //$NON-NLS-1$ //$NON-NLS-2$
+                + ARCHIMATE_CONTENT_TYPE_FILTER;
         var json = get(url, accessToken);
         return ResponseParser.parseModelPage(json, page);
     }
@@ -89,7 +94,8 @@ public class ArchiteezyClient {
      */
     public PagedResult<RemoteModel> listModels(String serverUrl, String accessToken, int page)
             throws ApiException {
-        var url = serverUrl + "/api/models?page=" + page; //$NON-NLS-1$
+        var url = serverUrl + "/api/models?page=" + page //$NON-NLS-1$
+                + ARCHIMATE_CONTENT_TYPE_FILTER;
         var json = get(url, accessToken);
         return ResponseParser.parseModelPage(json, page);
     }
@@ -110,19 +116,6 @@ public class ArchiteezyClient {
     }
 
     /**
-     * Downloads the raw ArchiMate content from the given URL.
-     *
-     * @param accessToken OAuth2 bearer token (may be {@code null} for public
-     *        content).
-     * @param contentUrl direct URL to the model content
-     * @return raw content bytes
-     * @throws ApiException on HTTP or I/O error
-     */
-    public byte[] getModelContent(String accessToken, String contentUrl) throws ApiException {
-        return getModelContent(accessToken, contentUrl, CancelSignal.NEVER);
-    }
-
-    /**
      * Downloads the raw ArchiMate content, aborting the transfer if
      * {@code cancel} fires.
      *
@@ -135,10 +128,17 @@ public class ArchiteezyClient {
      */
     public byte[] getModelContent(String accessToken, String contentUrl, CancelSignal cancel)
             throws ApiException {
+        if (contentUrl == null || contentUrl.isBlank()) {
+            throw new ApiException("Model has no content URL", null); //$NON-NLS-1$
+        }
         try {
             var builder = HttpRequest.newBuilder()
                     .uri(URI.create(contentUrl))
                     .timeout(TRANSFER_TIMEOUT)
+                    // The /content endpoint only accepts application/json (other Accept values
+                    // get a 406). Spring serializes the byte[] as a JSON-quoted base64 string,
+                    // which we unwrap below.
+                    .header("Accept", "application/json") //$NON-NLS-1$ //$NON-NLS-2$
                     .GET();
             if (accessToken != null && !accessToken.isEmpty()) {
                 builder.header(AUTHORIZATION, BEARER_PREFIX + accessToken);
@@ -146,14 +146,67 @@ public class ArchiteezyClient {
             var request = builder.build();
             var response = sendCancelable(request, HttpResponse.BodyHandlers.ofByteArray(), cancel);
             checkStatus(response.statusCode(), contentUrl);
-            return response.body();
+            return decodeBase64IfWrapped(response.body());
         } catch (ApiException e) {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
+        }
+    }
+
+    /**
+     * Builds a non-null one-line description for an exception, falling back to
+     * the runtime class name when {@link Throwable#getMessage()} is {@code null}.
+     * Avoids surfacing the literal text {@code "Request failed: null"} to the
+     * user when an underlying error (e.g. a bare {@link NullPointerException})
+     * carries no message of its own.
+     *
+     * @param t the throwable to summarize
+     * @return a non-null description suitable for end-user error text
+     */
+    private static String describe(Throwable t) {
+        if (t == null) {
+            return "unknown error"; //$NON-NLS-1$
+        }
+        final var msg = t.getMessage();
+        if (msg != null && !msg.isBlank()) {
+            return msg;
+        }
+        return t.getClass().getSimpleName();
+    }
+
+    /**
+     * Unwraps Spring's default {@code byte[]} → JSON serialization. When the
+     * server responds with {@code "<base64>"} we strip the quotes and decode;
+     * any other body is returned verbatim so callers stay compatible with
+     * servers that send the raw {@code .archimate} XML directly.
+     *
+     * @param body the raw response body bytes
+     * @return decoded bytes, or the input unchanged when no JSON wrapper was detected
+     */
+    private static byte[] decodeBase64IfWrapped(byte[] body) {
+        if (body == null || body.length < 2) {
+            return body;
+        }
+        var start = 0;
+        var end = body.length;
+        while (start < end && Character.isWhitespace(body[start])) {
+            start++;
+        }
+        while (end > start && Character.isWhitespace(body[end - 1])) {
+            end--;
+        }
+        if (end - start < 2 || body[start] != '"' || body[end - 1] != '"') {
+            return body;
+        }
+        try {
+            var b64 = new String(body, start + 1, end - start - 2, StandardCharsets.US_ASCII);
+            return Base64.getDecoder().decode(b64);
+        } catch (IllegalArgumentException ignored) {
+            return body;
         }
     }
 
@@ -227,7 +280,7 @@ public class ArchiteezyClient {
             byte[] content, CancelSignal cancel) throws ApiException {
         var url = serverUrl + "/api/models"; //$NON-NLS-1$
         var boundary = "----ArchiteezyBoundary" + Long.toHexString(System.currentTimeMillis()); //$NON-NLS-1$
-        var body = buildMultipart(boundary, projectId, fileName, content);
+        var body = MultipartBuilder.build(boundary, projectId, fileName, content);
         try {
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -251,83 +304,14 @@ public class ArchiteezyClient {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
-        }
-    }
-
-    private static byte[] buildMultipart(String boundary, String projectId, String fileName, byte[] content)
-            throws ApiException {
-        try {
-            var out = new ByteArrayOutputStream();
-            var crlf = "\r\n"; //$NON-NLS-1$
-            var entityJson = "{\"projectId\":" + jsonString(projectId) + "}"; //$NON-NLS-1$ //$NON-NLS-2$
-
-            // Part 1: entity JSON
-            out.write((BOUNDARY_SEPARATOR + boundary + crlf).getBytes(StandardCharsets.UTF_8));
-            out.write(("Content-Disposition: form-data; name=\"entity\"; filename=\"blob\"" + crlf) //$NON-NLS-1$
-                    .getBytes(StandardCharsets.UTF_8));
-            out.write(("Content-Type: application/json" + crlf + crlf).getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
-            out.write(entityJson.getBytes(StandardCharsets.UTF_8));
-            out.write(crlf.getBytes(StandardCharsets.UTF_8));
-
-            // Part 2: model content
-            out.write((BOUNDARY_SEPARATOR + boundary + crlf).getBytes(StandardCharsets.UTF_8));
-            out.write(("Content-Disposition: form-data; name=\"content\"; filename=" + QUOTE + fileName + QUOTE + crlf) //$NON-NLS-1$
-                    .getBytes(StandardCharsets.UTF_8));
-            out.write(("Content-Type: application/octet-stream" + crlf + crlf).getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
-            out.write(content);
-            out.write(crlf.getBytes(StandardCharsets.UTF_8));
-
-            // Final boundary
-            out.write((BOUNDARY_SEPARATOR + boundary + BOUNDARY_SEPARATOR + crlf).getBytes(StandardCharsets.UTF_8));
-
-            return out.toByteArray();
-        } catch (IOException e) {
-            throw new ApiException("Failed to build multipart body", e); //$NON-NLS-1$
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Create / Update / Delete
-
-    /**
-     * Creates a new model record on the server.
-     *
-     * @param serverUrl base URL of the Architeezy server
-     * @param accessToken OAuth2 bearer token
-     * @param name model name
-     * @param description model description
-     * @return the newly created model metadata
-     * @throws ApiException on HTTP or I/O error
-     */
-    public RemoteModel createModel(String serverUrl, String accessToken, String name, String description)
-            throws ApiException {
-        var url = serverUrl + "/api/models"; //$NON-NLS-1$
-        var body = "{\"name\":" + jsonString(name) //$NON-NLS-1$
-                + ",\"description\":" + jsonString(description) + "}"; //$NON-NLS-1$ //$NON-NLS-2$
-
-        try {
-            var request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(REQUEST_TIMEOUT)
-                    .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
-                    .header(CONTENT_TYPE, "application/json") //$NON-NLS-1$
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            checkStatus(response.statusCode(), url);
-            return ResponseParser.parseModel(response.body());
-        } catch (ApiException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
-        } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
-        }
-    }
+    // Update / Delete
 
     /**
      * Uploads new ArchiMate content for an existing model using the dedicated
@@ -378,9 +362,9 @@ public class ArchiteezyClient {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         }
     }
 
@@ -405,9 +389,9 @@ public class ArchiteezyClient {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         }
     }
 
@@ -432,9 +416,9 @@ public class ArchiteezyClient {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + e.getMessage(), e);
+            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         }
     }
 
@@ -488,13 +472,6 @@ public class ArchiteezyClient {
         if (status < 200 || status >= 300) {
             throw new ApiException(status, "HTTP " + status + " for " + url); //$NON-NLS-1$ //$NON-NLS-2$
         }
-    }
-
-    private static String jsonString(String value) {
-        if (value == null) {
-            return "null"; //$NON-NLS-1$
-        }
-        return QUOTE + value.replace("\\", "\\\\").replace(QUOTE, "\\" + QUOTE) + QUOTE; //$NON-NLS-1$ //$NON-NLS-2$
     }
 
 }

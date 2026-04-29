@@ -12,15 +12,18 @@ package com.architeezy.archi.connector.ui.wizards;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.core.runtime.SubMonitor;
-import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.jface.viewers.ITreeContentProvider;
 import org.eclipse.jface.viewers.LabelProvider;
-import org.eclipse.jface.viewers.ListViewer;
+import org.eclipse.jface.viewers.TreeViewer;
+import org.eclipse.jface.viewers.Viewer;
+import org.eclipse.jface.viewers.ViewerComparator;
 import org.eclipse.jface.wizard.WizardPage;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
@@ -29,6 +32,7 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.Tree;
 
 import com.architeezy.archi.connector.ConnectorPlugin;
 import com.architeezy.archi.connector.Messages;
@@ -37,14 +41,15 @@ import com.architeezy.archi.connector.api.dto.RemoteProject;
 import com.architeezy.archi.connector.auth.ConnectionProfile;
 
 /**
- * Wizard page for selecting the target project during model export.
+ * Wizard page for selecting the target project during model export. Projects
+ * are grouped by their owning scope so the tree is {@code scope → project}.
  */
 @SuppressWarnings("checkstyle:MagicNumber")
 public class ProjectSelectionPage extends WizardPage {
 
     private Text searchField;
 
-    private ListViewer listViewer;
+    private TreeViewer treeViewer;
 
     private List<RemoteProject> allProjects = Collections.emptyList();
 
@@ -69,25 +74,16 @@ public class ProjectSelectionPage extends WizardPage {
         searchField.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         searchField.addModifyListener((ModifyListener) e -> applyFilter(searchField.getText()));
 
-        var list = new org.eclipse.swt.widgets.List(container, SWT.BORDER | SWT.SINGLE | SWT.V_SCROLL);
+        var tree = new Tree(container, SWT.BORDER | SWT.SINGLE | SWT.V_SCROLL);
         var gd = new GridData(SWT.FILL, SWT.FILL, true, true);
         gd.heightHint = 250;
-        list.setLayoutData(gd);
+        tree.setLayoutData(gd);
 
-        listViewer = new ListViewer(list);
-        listViewer.setContentProvider(ArrayContentProvider.getInstance());
-        listViewer.setLabelProvider(new LabelProvider() {
-
-            @Override
-            public String getText(Object element) {
-                if (element instanceof RemoteProject(String id, String name)) {
-                    return name != null ? name : id;
-                }
-                return super.getText(element);
-            }
-
-        });
-        listViewer.addSelectionChangedListener(e -> setPageComplete(getSelectedProject() != null));
+        treeViewer = new TreeViewer(tree);
+        treeViewer.setContentProvider(new ProjectTreeContentProvider());
+        treeViewer.setLabelProvider(new ProjectTreeLabelProvider());
+        treeViewer.setComparator(new AlphabeticalComparator());
+        treeViewer.addSelectionChangedListener(e -> setPageComplete(getSelectedProject() != null));
     }
 
     @Override
@@ -107,7 +103,7 @@ public class ProjectSelectionPage extends WizardPage {
             return;
         }
         setMessage(Messages.ProjectPage_loading);
-        listViewer.setInput(Collections.emptyList());
+        treeViewer.setInput(Collections.emptyList());
         var loaded = new ArrayList<RemoteProject>();
         try {
             getContainer().run(true, true, monitor -> loadAllProjectPages(profile, loaded, monitor));
@@ -160,18 +156,56 @@ public class ProjectSelectionPage extends WizardPage {
     }
 
     private void applyFilter(String query) {
+        final List<RemoteProject> visible;
         if (query == null || query.isBlank()) {
-            listViewer.setInput(allProjects);
+            visible = allProjects;
         } else {
             String lc = query.toLowerCase();
-            List<RemoteProject> filtered = new ArrayList<>();
+            visible = new ArrayList<>();
             for (RemoteProject p : allProjects) {
-                if (p.name() != null && p.name().toLowerCase().contains(lc)) {
-                    filtered.add(p);
+                if (matches(p, lc)) {
+                    visible.add(p);
                 }
             }
-            listViewer.setInput(filtered);
         }
+        treeViewer.setInput(buildTree(visible));
+        treeViewer.expandAll();
+    }
+
+    /**
+     * A project is kept when the query is contained in either its own name or
+     * its scope's name, so a scope-name match brings every project in that
+     * scope into view.
+     *
+     * @param p the project to test
+     * @param lcQuery the search query, already lower-cased
+     * @return {@code true} if the project name or its scope name contains the query
+     */
+    static boolean matches(RemoteProject p, String lcQuery) {
+        return containsLc(p.name(), lcQuery) || containsLc(p.scopeName(), lcQuery);
+    }
+
+    private static boolean containsLc(String haystack, String lcNeedle) {
+        return haystack != null && haystack.toLowerCase().contains(lcNeedle);
+    }
+
+    /**
+     * Groups projects by their owning scope, preserving server order within
+     * each group. Scopes without a usable label are bucketed under a
+     * placeholder so projects are never silently dropped.
+     *
+     * @param projects the flat list of projects from the server
+     * @return the root list of scope nodes
+     */
+    static List<ScopeNode> buildTree(List<RemoteProject> projects) {
+        var groups = new LinkedHashMap<String, ScopeNode>();
+        for (var p : projects) {
+            var key = p.scopeId() != null ? p.scopeId()
+                    : (p.scopeName() != null ? "name:" + p.scopeName() : "__none__"); //$NON-NLS-1$ //$NON-NLS-2$
+            var label = p.scopeName() != null ? p.scopeName() : Messages.ProjectPage_unknownScope;
+            groups.computeIfAbsent(key, k -> new ScopeNode(label, new ArrayList<>())).projects().add(p);
+        }
+        return new ArrayList<>(groups.values());
     }
 
     // -----------------------------------------------------------------------
@@ -183,12 +217,98 @@ public class ProjectSelectionPage extends WizardPage {
      * @return the selected project, or {@code null}
      */
     public RemoteProject getSelectedProject() {
-        var sel = (IStructuredSelection) listViewer.getSelection();
+        var sel = (IStructuredSelection) treeViewer.getSelection();
         if (sel == null || sel.isEmpty()) {
             return null;
         }
         var o = sel.getFirstElement();
         return o instanceof RemoteProject remoteProject ? remoteProject : null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Tree model + JFace providers
+
+    /**
+     * Scope grouping node holding the projects that belong to a single scope.
+     *
+     * @param label display text for the scope row
+     * @param projects projects belonging to this scope, in server order
+     */
+    record ScopeNode(String label, List<RemoteProject> projects) {
+    }
+
+    private static final class ProjectTreeContentProvider implements ITreeContentProvider {
+
+        @Override
+        public Object[] getElements(Object inputElement) {
+            return inputElement instanceof List<?> list ? list.toArray() : new Object[0];
+        }
+
+        @Override
+        public Object[] getChildren(Object parentElement) {
+            if (parentElement instanceof ScopeNode scope) {
+                return scope.projects().toArray();
+            }
+            return new Object[0];
+        }
+
+        @Override
+        public Object getParent(Object element) {
+            return null;
+        }
+
+        @Override
+        public boolean hasChildren(Object element) {
+            return element instanceof ScopeNode scope && !scope.projects().isEmpty();
+        }
+
+    }
+
+    private static final class AlphabeticalComparator extends ViewerComparator {
+
+        @Override
+        public int compare(Viewer viewer, Object e1, Object e2) {
+            return compareNullable(label(e1), label(e2));
+        }
+
+        private static String label(Object o) {
+            if (o instanceof ScopeNode s) {
+                return s.label();
+            }
+            if (o instanceof RemoteProject p) {
+                return p.name() != null ? p.name() : p.id();
+            }
+            return null;
+        }
+
+        private static int compareNullable(String a, String b) {
+            if (a == null && b == null) {
+                return 0;
+            }
+            if (a == null) {
+                return 1;
+            }
+            if (b == null) {
+                return -1;
+            }
+            return a.compareToIgnoreCase(b);
+        }
+
+    }
+
+    private static final class ProjectTreeLabelProvider extends LabelProvider {
+
+        @Override
+        public String getText(Object element) {
+            if (element instanceof ScopeNode scope) {
+                return scope.label();
+            }
+            if (element instanceof RemoteProject p) {
+                return p.name() != null ? p.name() : p.id();
+            }
+            return super.getText(element);
+        }
+
     }
 
 }

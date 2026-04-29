@@ -23,6 +23,8 @@ package com.architeezy.archi.connector.api.dto;
  * @param projectSlug owning project slug
  * @param projectVersion owning project version
  * @param scopeSlug owning scope slug
+ * @param projectName owning project display name (may be {@code null})
+ * @param scopeName owning scope display name (may be {@code null})
  */
 @SuppressWarnings("checkstyle:ParameterNumber")
 public record RemoteModel(
@@ -36,7 +38,9 @@ public record RemoteModel(
         String slug,
         String projectSlug,
         String projectVersion,
-        String scopeSlug) {
+        String scopeSlug,
+        String projectName,
+        String scopeName) {
 
     /**
      * Convenience constructor for callers that only care about the core
@@ -52,7 +56,31 @@ public record RemoteModel(
      */
     public RemoteModel(String id, String name, String description, String author,
             String lastModified, String selfUrl, String contentUrl) {
-        this(id, name, description, author, lastModified, selfUrl, contentUrl, null, null, null, null);
+        this(id, name, description, author, lastModified, selfUrl, contentUrl,
+                null, null, null, null, null, null);
+    }
+
+    /**
+     * Convenience constructor that omits the parent-resource display names.
+     *
+     * @param id the id
+     * @param name the name
+     * @param description the description
+     * @param author the author
+     * @param lastModified the last modified
+     * @param selfUrl the self URL
+     * @param contentUrl the content URL
+     * @param slug model slug
+     * @param projectSlug owning project slug
+     * @param projectVersion owning project version
+     * @param scopeSlug owning scope slug
+     */
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public RemoteModel(String id, String name, String description, String author,
+            String lastModified, String selfUrl, String contentUrl,
+            String slug, String projectSlug, String projectVersion, String scopeSlug) {
+        this(id, name, description, author, lastModified, selfUrl, contentUrl,
+                slug, projectSlug, projectVersion, scopeSlug, null, null);
     }
 
     @Override

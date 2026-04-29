@@ -163,9 +163,10 @@ class UpdateCheckServiceCheckModelTests {
         var path = "/api/models/" + modelId;
         var contentUrl = baseUrl + path + "/content";
         var body = "{\"id\":\"" + modelId + "\",\"name\":\"N\",\"description\":\"d\","
-                + "\"author\":\"a\",\"lastModificationDateTime\":\"" + lastModified + "\","
+                + "\"creator\":{\"id\":\"u1\",\"name\":\"a\"},"
+                + "\"lastModificationDateTime\":\"" + lastModified + "\","
                 + "\"_links\":{\"self\":{\"href\":\"" + baseUrl + path + "\"},"
-                + "\"archimate\":{\"title\":\"archimate\",\"href\":\"" + contentUrl + "\"}}}";
+                + "\"content\":[{\"title\":\"ArchiMate\",\"href\":\"" + contentUrl + "\"}]}}";
         var sink = new AtomicReference<HttpExchange>();
         server.createContext(path, ex -> {
             sink.set(ex);

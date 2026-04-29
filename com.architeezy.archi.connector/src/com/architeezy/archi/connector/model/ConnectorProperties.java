@@ -111,7 +111,32 @@ public final class ConnectorProperties {
         }
         var uri = URI.create(modelUrl);
         var port = uri.getPort() > 0 ? ":" + uri.getPort() : ""; //$NON-NLS-1$ //$NON-NLS-2$
-        return uri.getScheme() + "://" + uri.getHost() + port; //$NON-NLS-1$
+        return normalizeServerUrl(uri.getScheme() + "://" + uri.getHost() + port); //$NON-NLS-1$
+    }
+
+    /**
+     * Normalizes a server base URL to a canonical form by stripping any
+     * trailing slashes. Returns {@code null} or blank input unchanged.
+     *
+     * <p>
+     * Profile URLs entered through the wizard often have a trailing slash
+     * (e.g. {@code http://localhost:8080/}) while server URLs derived from a
+     * model's HAL self link via {@link #extractServerUrl} never do. Both forms
+     * must compare equal so that profile lookup works for either.
+     *
+     * @param serverUrl raw URL to normalize, or null
+     * @return canonical URL with no trailing slash, or the input unchanged when
+     *         null/blank
+     */
+    public static String normalizeServerUrl(String serverUrl) {
+        if (serverUrl == null || serverUrl.isBlank()) {
+            return serverUrl;
+        }
+        var end = serverUrl.length();
+        while (end > 0 && serverUrl.charAt(end - 1) == '/') {
+            end--;
+        }
+        return end == serverUrl.length() ? serverUrl : serverUrl.substring(0, end);
     }
 
 }

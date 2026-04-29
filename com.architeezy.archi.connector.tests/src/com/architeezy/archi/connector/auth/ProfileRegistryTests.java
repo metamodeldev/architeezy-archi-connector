@@ -177,6 +177,32 @@ class ProfileRegistryTests {
     }
 
     @Test
+    void findProfileForServerMatchesProfileWithTrailingSlash() {
+        registry.removeProfile("Architeezy");
+        // Wizard often saves the URL with a trailing slash, e.g. "http://localhost:8080/"
+        var profile = new ConnectionProfile("local", "http://localhost:8080/", "cid");
+        registry.addProfile(profile, "auth", "token");
+
+        // Server URL extracted from a model self link never has a trailing slash.
+        assertSame(profile, registry.findProfileForServer("http://localhost:8080"));
+    }
+
+    @Test
+    void findProfileForServerMatchesProfileWithoutTrailingSlashWhenLookupHasOne() {
+        registry.removeProfile("Architeezy");
+        var profile = new ConnectionProfile("local", "http://localhost:8080", "cid");
+        registry.addProfile(profile, "auth", "token");
+
+        assertSame(profile, registry.findProfileForServer("http://localhost:8080/"));
+    }
+
+    @Test
+    void connectionProfileNormalizesTrailingSlashOnConstruction() {
+        var profile = new ConnectionProfile("p", "https://host.example/", "cid");
+        assertEquals("https://host.example", profile.getServerUrl());
+    }
+
+    @Test
     void getProfilesReturnsUnmodifiableList() {
         var profiles = registry.getProfiles();
         var newProfile = new ConnectionProfile("x", "y", "z");

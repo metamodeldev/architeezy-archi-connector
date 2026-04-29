@@ -110,4 +110,31 @@ class ConnectorPropertiesTests {
         assertNull(ConnectorProperties.extractServerUrl(""));
     }
 
+    // normalizeServerUrl ---------------------------------------------------
+
+    @Test
+    void normalizeServerUrlStripsSingleTrailingSlash() {
+        assertEquals("http://localhost:8080",
+                ConnectorProperties.normalizeServerUrl("http://localhost:8080/"));
+    }
+
+    @Test
+    void normalizeServerUrlStripsMultipleTrailingSlashes() {
+        assertEquals("https://srv.example.com",
+                ConnectorProperties.normalizeServerUrl("https://srv.example.com///"));
+    }
+
+    @Test
+    void normalizeServerUrlLeavesUrlWithoutTrailingSlashUnchanged() {
+        assertEquals("http://localhost:8080",
+                ConnectorProperties.normalizeServerUrl("http://localhost:8080"));
+    }
+
+    @Test
+    void normalizeServerUrlPreservesNullAndBlank() {
+        assertNull(ConnectorProperties.normalizeServerUrl(null));
+        assertEquals("", ConnectorProperties.normalizeServerUrl(""));
+        assertEquals("   ", ConnectorProperties.normalizeServerUrl("   "));
+    }
+
 }

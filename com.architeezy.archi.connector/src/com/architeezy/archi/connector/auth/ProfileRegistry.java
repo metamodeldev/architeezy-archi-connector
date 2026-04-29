@@ -15,6 +15,8 @@ import java.util.List;
 
 import org.eclipse.jface.preference.IPreferenceStore;
 
+import com.architeezy.archi.connector.model.ConnectorProperties;
+
 /**
  * Owns the list of connection profiles and persists them via an Eclipse
  * preference store. Also exposes lookup helpers used by other services.
@@ -171,6 +173,10 @@ public class ProfileRegistry {
     /**
      * Returns the first profile whose server URL matches the given URL, or
      * {@code null} if none is found. Prefers a connected profile over others.
+     * Both the input URL and stored profile URLs are normalized via
+     * {@link ConnectorProperties#normalizeServerUrl} so that profiles entered
+     * with a trailing slash still match server URLs derived from model self
+     * links.
      *
      * @param serverUrl the server URL to match
      * @return a matching profile, or null
@@ -179,9 +185,10 @@ public class ProfileRegistry {
         if (serverUrl == null) {
             return null;
         }
+        var normalized = ConnectorProperties.normalizeServerUrl(serverUrl);
         ConnectionProfile fallback = null;
         for (var p : profiles) {
-            if (serverUrl.equals(p.getServerUrl())) {
+            if (normalized.equals(ConnectorProperties.normalizeServerUrl(p.getServerUrl()))) {
                 if (p.getStatus() == ProfileStatus.CONNECTED) {
                     return p;
                 }

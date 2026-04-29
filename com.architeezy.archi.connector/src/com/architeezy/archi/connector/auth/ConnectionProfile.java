@@ -9,6 +9,8 @@
  */
 package com.architeezy.archi.connector.auth;
 
+import com.architeezy.archi.connector.model.ConnectorProperties;
+
 /**
  * Holds the configuration and runtime state for one Architeezy server
  * connection.
@@ -32,7 +34,7 @@ public class ConnectionProfile {
      */
     public ConnectionProfile(String name, String serverUrl, String clientId) {
         this.name = name;
-        this.serverUrl = serverUrl;
+        this.serverUrl = ConnectorProperties.normalizeServerUrl(serverUrl);
         this.clientId = clientId;
         this.status = ProfileStatus.DISCONNECTED;
     }

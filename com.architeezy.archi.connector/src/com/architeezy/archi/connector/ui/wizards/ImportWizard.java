@@ -100,8 +100,10 @@ public class ImportWizard extends Wizard implements IImportWizard {
             Thread.currentThread().interrupt();
             resultPage.showResult(ResultWizardPage.Kind.CANCELLED, Messages.ProgressDialog_cancelled);
         } catch (InvocationTargetException e) {
-            var cause = e.getCause();
-            var message = cause != null && cause.getMessage() != null ? cause.getMessage() : e.getMessage();
+            final var root = e.getCause() != null ? e.getCause() : e;
+            final var message = root.getMessage() != null && !root.getMessage().isBlank()
+                    ? root.getMessage()
+                    : root.getClass().getSimpleName();
             if (cancelled) {
                 resultPage.showResult(ResultWizardPage.Kind.CANCELLED, Messages.ProgressDialog_cancelled);
             } else {
