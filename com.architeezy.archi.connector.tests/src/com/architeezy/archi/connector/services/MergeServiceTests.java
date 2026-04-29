@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.eclipse.emf.compare.AttributeChange;
 import org.eclipse.emf.compare.Comparison;
 import org.eclipse.emf.compare.ConflictKind;
+import org.eclipse.emf.compare.Diff;
 import org.eclipse.emf.compare.DifferenceKind;
 import org.eclipse.emf.compare.ReferenceChange;
 import org.eclipse.emf.compare.merge.IMerger;
@@ -203,7 +204,7 @@ class MergeServiceTests {
         assertFalse(realConflictDiffs.isEmpty(), "diverging bounds must produce real conflicts");
         assertTrue(realConflictDiffs.stream().allMatch(AttributeChange.class::isInstance),
                 () -> "real conflicts must be attribute changes on the bounds, got: " + realConflictDiffs);
-        var conflictMatches = realConflictDiffs.stream().map(d -> d.getMatch()).distinct().toList();
+        var conflictMatches = realConflictDiffs.stream().map(Diff::getMatch).distinct().toList();
         assertEquals(1, conflictMatches.size(),
                 () -> "all conflicting diffs must belong to a single bounds match, got: " + conflictMatches);
         assertEquals("Bounds", conflictMatches.get(0).getOrigin().eClass().getName());
@@ -247,7 +248,7 @@ class MergeServiceTests {
         assertFalse(realConflictDiffs.isEmpty(), "diverging bendpoint must produce real conflicts");
         assertTrue(realConflictDiffs.stream().allMatch(AttributeChange.class::isInstance),
                 () -> "real conflicts must be attribute changes on the bendpoint, got: " + realConflictDiffs);
-        var conflictMatches = realConflictDiffs.stream().map(d -> d.getMatch()).distinct().toList();
+        var conflictMatches = realConflictDiffs.stream().map(Diff::getMatch).distinct().toList();
         assertEquals(1, conflictMatches.size(),
                 () -> "all conflicting diffs must belong to a single bendpoint match, got: " + conflictMatches);
         assertEquals("DiagramModelBendpoint", conflictMatches.get(0).getOrigin().eClass().getName());

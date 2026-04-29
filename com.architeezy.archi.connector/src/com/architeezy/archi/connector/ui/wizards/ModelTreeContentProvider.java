@@ -22,7 +22,7 @@ import com.architeezy.archi.connector.ui.wizards.ModelTreeNodes.ScopeNode;
 /**
  * Tree content provider for the import wizard. Roots are scope nodes; their
  * children are project nodes; the leaves are {@link RemoteModel} entries.
- * Sorting applies to every level — branches are always sorted by their label,
+ * Sorting applies to every level - branches are always sorted by their label,
  * leaves either by name or by last-modified timestamp depending on which
  * column is active.
  */

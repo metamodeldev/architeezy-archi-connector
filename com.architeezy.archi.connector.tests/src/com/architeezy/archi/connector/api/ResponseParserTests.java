@@ -10,6 +10,7 @@
 package com.architeezy.archi.connector.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -286,6 +287,41 @@ class ResponseParserTests {
         assertEquals(2, list.size());
         assertEquals("weird } name ]", list.get(0).name());
         assertEquals("p2", list.get(1).id());
+    }
+
+    @Test
+    void parseModelMarksUpdatableWhenUpdateLinkPresent() {
+        var json = "{"
+                + "\"id\":\"m7\","
+                + "\"_links\":{"
+                + "\"self\":{\"href\":\"https://srv/api/models/m7\"},"
+                + "\"update\":{\"href\":\"https://srv/api/models/m7\"}"
+                + "}"
+                + "}";
+        assertTrue(ResponseParser.parseModel(json).updatable());
+    }
+
+    @Test
+    void parseModelMarksReadOnlyWhenUpdateLinkAbsent() {
+        var json = "{"
+                + "\"id\":\"m8\","
+                + "\"_links\":{\"self\":{\"href\":\"https://srv/api/models/m8\"}}"
+                + "}";
+        assertFalse(ResponseParser.parseModel(json).updatable());
+    }
+
+    @Test
+    void parseProjectListReadsUpdateLink() {
+        var json = "{\"_embedded\":{\"projects\":["
+                + "{\"id\":\"p1\",\"name\":\"Writable\","
+                + "\"_links\":{\"self\":{\"href\":\"x\"},\"update\":{\"href\":\"x\"}}},"
+                + "{\"id\":\"p2\",\"name\":\"ReadOnly\","
+                + "\"_links\":{\"self\":{\"href\":\"x\"}}}"
+                + "]}}";
+        var list = ResponseParser.parseProjectList(json);
+        assertEquals(2, list.size());
+        assertTrue(list.get(0).updatable());
+        assertFalse(list.get(1).updatable());
     }
 
     @Test

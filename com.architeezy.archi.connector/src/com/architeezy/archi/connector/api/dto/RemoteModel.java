@@ -25,6 +25,8 @@ package com.architeezy.archi.connector.api.dto;
  * @param scopeSlug owning scope slug
  * @param projectName owning project display name (may be {@code null})
  * @param scopeName owning scope display name (may be {@code null})
+ * @param updatable whether the server advertised an {@code _links.update}
+ *        relation, meaning the current user may push updates back
  */
 @SuppressWarnings("checkstyle:ParameterNumber")
 public record RemoteModel(
@@ -40,7 +42,8 @@ public record RemoteModel(
         String projectVersion,
         String scopeSlug,
         String projectName,
-        String scopeName) {
+        String scopeName,
+        boolean updatable) {
 
     /**
      * Convenience constructor for callers that only care about the core
@@ -57,7 +60,7 @@ public record RemoteModel(
     public RemoteModel(String id, String name, String description, String author,
             String lastModified, String selfUrl, String contentUrl) {
         this(id, name, description, author, lastModified, selfUrl, contentUrl,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, true);
     }
 
     /**
@@ -80,7 +83,35 @@ public record RemoteModel(
             String lastModified, String selfUrl, String contentUrl,
             String slug, String projectSlug, String projectVersion, String scopeSlug) {
         this(id, name, description, author, lastModified, selfUrl, contentUrl,
-                slug, projectSlug, projectVersion, scopeSlug, null, null);
+                slug, projectSlug, projectVersion, scopeSlug, null, null, true);
+    }
+
+    /**
+     * Convenience constructor that omits the {@code updatable} flag (defaults
+     * to {@code true}). Used by tests and callers that don't carry HAL link
+     * metadata.
+     *
+     * @param id the id
+     * @param name the name
+     * @param description the description
+     * @param author the author
+     * @param lastModified the last modified
+     * @param selfUrl the self URL
+     * @param contentUrl the content URL
+     * @param slug model slug
+     * @param projectSlug owning project slug
+     * @param projectVersion owning project version
+     * @param scopeSlug owning scope slug
+     * @param projectName owning project display name
+     * @param scopeName owning scope display name
+     */
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public RemoteModel(String id, String name, String description, String author,
+            String lastModified, String selfUrl, String contentUrl,
+            String slug, String projectSlug, String projectVersion, String scopeSlug,
+            String projectName, String scopeName) {
+        this(id, name, description, author, lastModified, selfUrl, contentUrl,
+                slug, projectSlug, projectVersion, scopeSlug, projectName, scopeName, true);
     }
 
     @Override

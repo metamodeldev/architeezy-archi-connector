@@ -98,6 +98,12 @@ public final class Messages extends NLS {
 
     public static String ModelPage_overwriteWarning;
 
+    public static String ModelPage_readOnlySuffix;
+
+    public static String ModelPage_readOnlyWarning;
+
+    public static String ModelPage_noModelsHint;
+
     // ProjectSelectionPage
     public static String ProjectPage_title;
 
@@ -114,6 +120,8 @@ public final class Messages extends NLS {
     public static String ProjectPage_loadError;
 
     public static String ProjectPage_unknownScope;
+
+    public static String ProjectPage_noProjectsHint;
 
     public static String ModelPage_unknownScope;
 

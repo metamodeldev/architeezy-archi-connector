@@ -15,7 +15,7 @@ package com.architeezy.archi.connector.api;
  * <p>Spring Data REST renders entity references (scope, project, creator,
  * lastModifier, ...) as nested JSON objects whose fields collide with
  * top-level keys (id, name, slug). A naive {@code indexOf}-based extractor
- * would grab the first occurrence — which is now inside a nested object — so
+ * would grab the first occurrence - which is now inside a nested object - so
  * code that wants top-level scalars walks only depth-1 entries.
  */
 final class JsonObjects {
@@ -69,42 +69,59 @@ final class JsonObjects {
             return null;
         }
         final var objEnd = findMatchingBracket(json, objStart, '{', '}');
-        if (objEnd < 0) {
-            return null;
-        }
-        var i = objStart + 1;
-        while (i < objEnd) {
-            i = skipWhitespace(json, i, objEnd);
-            if (i >= objEnd || json.charAt(i) != '"') {
+        return objEnd < 0 ? null : scanEntries(json, key, objStart + 1, objEnd);
+    }
+
+    private static String scanEntries(String json, String key, int from, int limit) {
+        var i = from;
+        while (i < limit) {
+            i = skipWhitespace(json, i, limit);
+            if (i >= limit || json.charAt(i) != '"') {
                 i++;
                 continue;
             }
-            final var keyEnd = findClosingQuote(json, i + 1);
-            if (keyEnd < 0 || keyEnd >= objEnd) {
+            final var entry = nextEntry(json, i, limit);
+            if (entry == null) {
                 return null;
             }
-            final var afterKey = skipWhitespace(json, keyEnd + 1, objEnd);
-            if (afterKey >= objEnd || json.charAt(afterKey) != ':') {
-                return null;
+            if (keyMatches(json, i, key, entry)) {
+                return json.substring(entry.valStart(), entry.valEnd());
             }
-            final var valStart = skipWhitespace(json, afterKey + 1, objEnd);
-            if (valStart >= objEnd) {
-                return null;
-            }
-            final var valEnd = findValueEnd(json, valStart, objEnd);
-            if (valEnd < 0) {
-                return null;
-            }
-            if (json.regionMatches(i + 1, key, 0, keyEnd - (i + 1))
-                    && key.length() == keyEnd - (i + 1)) {
-                return json.substring(valStart, valEnd);
-            }
-            i = skipWhitespace(json, valEnd, objEnd);
-            if (i < objEnd && json.charAt(i) == ',') {
-                i++;
-            }
+            i = afterComma(json, entry.valEnd(), limit);
         }
         return null;
+    }
+
+    private static boolean keyMatches(String json, int keyStart, String key, Entry entry) {
+        return key.length() == entry.keyLen()
+                && json.regionMatches(keyStart + 1, key, 0, entry.keyLen());
+    }
+
+    private static int afterComma(String json, int from, int limit) {
+        var i = skipWhitespace(json, from, limit);
+        if (i < limit && json.charAt(i) == ',') {
+            i++;
+        }
+        return i;
+    }
+
+    // Reads the entry whose opening quote sits at keyStart; returns its key
+    // length plus the value's substring range, or null on malformed input.
+    private static Entry nextEntry(String json, int keyStart, int limit) {
+        final var keyEnd = findClosingQuote(json, keyStart + 1);
+        if (keyEnd < 0 || keyEnd >= limit) {
+            return null;
+        }
+        final var afterKey = skipWhitespace(json, keyEnd + 1, limit);
+        if (afterKey >= limit || json.charAt(afterKey) != ':') {
+            return null;
+        }
+        final var valStart = skipWhitespace(json, afterKey + 1, limit);
+        if (valStart >= limit) {
+            return null;
+        }
+        final var valEnd = findValueEnd(json, valStart, limit);
+        return valEnd < 0 ? null : new Entry(keyEnd - (keyStart + 1), valStart, valEnd);
     }
 
     private static int findValueEnd(String json, int valStart, int limit) {
@@ -193,6 +210,9 @@ final class JsonObjects {
             return -1;
         }
         return 0;
+    }
+
+    private record Entry(int keyLen, int valStart, int valEnd) {
     }
 
 }

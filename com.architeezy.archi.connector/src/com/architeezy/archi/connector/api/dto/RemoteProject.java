@@ -16,8 +16,11 @@ package com.architeezy.archi.connector.api.dto;
  * @param name the project name
  * @param scopeId id of the owning scope, or {@code null} if not provided
  * @param scopeName name of the owning scope, or {@code null} if not provided
+ * @param updatable whether the server advertised an {@code _links.update}
+ *        relation, meaning the current user may export models into this
+ *        project
  */
-public record RemoteProject(String id, String name, String scopeId, String scopeName) {
+public record RemoteProject(String id, String name, String scopeId, String scopeName, boolean updatable) {
 
     /**
      * Convenience constructor for callers (mostly tests) that do not need the
@@ -27,7 +30,21 @@ public record RemoteProject(String id, String name, String scopeId, String scope
      * @param name the project name
      */
     public RemoteProject(String id, String name) {
-        this(id, name, null, null);
+        this(id, name, null, null, true);
+    }
+
+    /**
+     * Convenience constructor that omits the {@code updatable} flag (defaults
+     * to {@code true}). Used by tests and callers that don't carry HAL link
+     * metadata.
+     *
+     * @param id the project id
+     * @param name the project name
+     * @param scopeId id of the owning scope
+     * @param scopeName name of the owning scope
+     */
+    public RemoteProject(String id, String name, String scopeId, String scopeName) {
+        this(id, name, scopeId, scopeName, true);
     }
 
     @Override

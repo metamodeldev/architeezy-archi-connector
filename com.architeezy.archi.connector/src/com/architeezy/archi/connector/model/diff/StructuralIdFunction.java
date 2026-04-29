@@ -9,10 +9,10 @@
  */
 package com.architeezy.archi.connector.model.diff;
 
+import java.util.function.Function;
+
 import org.eclipse.emf.compare.match.eobject.IdentifierEObjectMatcher;
 import org.eclipse.emf.ecore.EObject;
-
-import com.google.common.base.Function;
 
 /**
  * Identifier function for EMF Compare that supplements the default
@@ -25,9 +25,9 @@ import com.google.common.base.Function;
  * no XMI ID, yet their identity in a 3-way merge is unambiguous because of
  * where they sit in the containment tree:
  * <ul>
- * <li>{@code IBounds} on every {@code IDiagramModelObject} — a single-valued
+ * <li>{@code IBounds} on every {@code IDiagramModelObject} - a single-valued
  * slot, so the slot itself identifies the element.</li>
- * <li>{@code IDiagramModelBendpoint} on every diagram connection — an ordered
+ * <li>{@code IDiagramModelBendpoint} on every diagram connection - an ordered
  * list, so the index inside that list identifies the element.</li>
  * </ul>
  *
@@ -67,19 +67,21 @@ public final class StructuralIdFunction implements Function<EObject, String> {
             return defaultId;
         }
         var ref = input.eContainmentFeature();
-        if (ref == null) {
-            return null;
-        }
         var container = input.eContainer();
-        if (container == null) {
+        if (ref == null || container == null) {
             return null;
         }
         var parentId = apply(container);
         if (parentId == null) {
             return null;
         }
+        var suffix = containmentSuffix(container, ref, input);
+        return suffix == null ? null : parentId + suffix;
+    }
+
+    private String containmentSuffix(EObject container, org.eclipse.emf.ecore.EReference ref, EObject input) {
         if (!ref.isMany()) {
-            return parentId + "/@" + ref.getName();
+            return "/@" + ref.getName();
         }
         if (!ref.isOrdered()) {
             return null;
@@ -87,10 +89,7 @@ public final class StructuralIdFunction implements Function<EObject, String> {
         @SuppressWarnings("unchecked")
         var list = (java.util.List<EObject>) container.eGet(ref);
         var index = list.indexOf(input);
-        if (index < 0) {
-            return null;
-        }
-        return parentId + "/@" + ref.getName() + "." + index;
+        return index < 0 ? null : "/@" + ref.getName() + "." + index;
     }
 
 }

@@ -27,6 +27,26 @@ import com.architeezy.archi.connector.auth.OAuthManager;
  */
 final class ResponseParser {
 
+    private static final String KEY_ID = "id"; //$NON-NLS-1$
+
+    private static final String KEY_NAME = "name"; //$NON-NLS-1$
+
+    private static final String KEY_SLUG = "slug"; //$NON-NLS-1$
+
+    private static final String KEY_HREF = "href"; //$NON-NLS-1$
+
+    private static final String KEY_LINKS = "_links"; //$NON-NLS-1$
+
+    private static final String KEY_SCOPE = "scope"; //$NON-NLS-1$
+
+    private static final String KEY_UPDATE = "update"; //$NON-NLS-1$
+
+    private static final String KEY_TOTAL_ELEMENTS = "totalElements"; //$NON-NLS-1$
+
+    private static final String KEY_TOTAL_PAGES = "totalPages"; //$NON-NLS-1$
+
+    private static final String KEY_NUMBER = "number"; //$NON-NLS-1$
+
     private ResponseParser() {
     }
 
@@ -52,10 +72,13 @@ final class ResponseParser {
             }
         }
 
-        var totalElements = OAuthManager.extractJsonLong(json, "totalElements", items.size()); //$NON-NLS-1$
-        var totalPages = (int) OAuthManager.extractJsonLong(json, "totalPages", 1); //$NON-NLS-1$
-        var pageNum = (int) OAuthManager.extractJsonLong(json, "number", requestedPage); //$NON-NLS-1$
+        return pagedResult(json, items, requestedPage);
+    }
 
+    private static <T> PagedResult<T> pagedResult(String json, List<T> items, int requestedPage) {
+        var totalElements = OAuthManager.extractJsonLong(json, KEY_TOTAL_ELEMENTS, items.size());
+        var totalPages = (int) OAuthManager.extractJsonLong(json, KEY_TOTAL_PAGES, 1);
+        var pageNum = (int) OAuthManager.extractJsonLong(json, KEY_NUMBER, requestedPage);
         return new PagedResult<>(items, totalElements, totalPages, pageNum);
     }
 
@@ -81,63 +104,80 @@ final class ResponseParser {
      * @return parsed model
      */
     static RemoteModel parseModel(String json) {
-        final var id = extractTopLevelString(json, "id"); //$NON-NLS-1$
-        final var name = extractTopLevelString(json, "name"); //$NON-NLS-1$
+        final var id = extractTopLevelString(json, KEY_ID);
+        final var name = extractTopLevelString(json, KEY_NAME);
         final var description = extractTopLevelString(json, "description"); //$NON-NLS-1$
         final var lastModified = extractTopLevelString(json, "lastModificationDateTime"); //$NON-NLS-1$
-        final var slug = extractTopLevelString(json, "slug"); //$NON-NLS-1$
+        final var slug = extractTopLevelString(json, KEY_SLUG);
 
-        String projectSlug = null;
-        String projectVersion = null;
-        String projectName = null;
-        final var projectBlock = extractTopLevelObject(json, "project"); //$NON-NLS-1$
-        if (projectBlock != null) {
-            projectSlug = OAuthManager.extractJsonString(projectBlock, "slug"); //$NON-NLS-1$
-            projectVersion = OAuthManager.extractJsonString(projectBlock, "version"); //$NON-NLS-1$
-            projectName = OAuthManager.extractJsonString(projectBlock, "name"); //$NON-NLS-1$
+        var project = parseProjectRef(json);
+        var scope = parseScopeRef(json);
+        var author = parseAuthor(json);
+        var links = parseModelLinks(json);
+
+        return new RemoteModel(id, name, description, author, lastModified, links.selfUrl(), links.contentUrl(),
+                slug, project.slug(), project.version(), scope.slug(), project.name(), scope.name(), links.updatable());
+    }
+
+    private static ProjectRef parseProjectRef(String json) {
+        final var block = extractTopLevelObject(json, "project"); //$NON-NLS-1$
+        if (block == null) {
+            return ProjectRef.EMPTY;
         }
+        return new ProjectRef(
+                OAuthManager.extractJsonString(block, KEY_SLUG),
+                OAuthManager.extractJsonString(block, "version"), //$NON-NLS-1$
+                OAuthManager.extractJsonString(block, KEY_NAME));
+    }
 
-        String scopeSlug = null;
-        String scopeName = null;
-        final var scopeBlock = extractTopLevelObject(json, "scope"); //$NON-NLS-1$
-        if (scopeBlock != null) {
-            scopeSlug = OAuthManager.extractJsonString(scopeBlock, "slug"); //$NON-NLS-1$
-            scopeName = OAuthManager.extractJsonString(scopeBlock, "name"); //$NON-NLS-1$
+    private static ScopeRef parseScopeRef(String json) {
+        final var block = extractTopLevelObject(json, KEY_SCOPE);
+        if (block == null) {
+            return ScopeRef.EMPTY;
         }
+        return new ScopeRef(
+                OAuthManager.extractJsonString(block, KEY_SLUG),
+                OAuthManager.extractJsonString(block, KEY_NAME));
+    }
 
-        String author = null;
+    private static String parseAuthor(String json) {
         var creatorBlock = extractTopLevelObject(json, "creator"); //$NON-NLS-1$
-        if (creatorBlock != null) {
-            author = OAuthManager.extractJsonString(creatorBlock, "name"); //$NON-NLS-1$
+        return creatorBlock != null ? OAuthManager.extractJsonString(creatorBlock, KEY_NAME) : null;
+    }
+
+    private static ModelLinks parseModelLinks(String json) {
+        final var linksBlock = extractTopLevelObject(json, KEY_LINKS);
+        if (linksBlock == null) {
+            return new ModelLinks(null, null, false);
         }
-
-        String selfUrl = null;
-        String contentUrl = null;
-        final var linksBlock = extractTopLevelObject(json, "_links"); //$NON-NLS-1$
-        if (linksBlock != null) {
-            final var selfIdx = linksBlock.indexOf("\"self\""); //$NON-NLS-1$
-            if (selfIdx >= 0) {
-                selfUrl = OAuthManager.extractJsonString(linksBlock.substring(selfIdx), "href"); //$NON-NLS-1$
-            }
-
-            // _links.content may be an array (multiple formats with titles) or a
-            // single object pointing at the model's binary content endpoint.
-            final var contentRaw = extractTopLevelValue(linksBlock, "content"); //$NON-NLS-1$
-            if (contentRaw != null && !contentRaw.isEmpty()) {
-                if (contentRaw.charAt(0) == '[') {
-                    contentUrl = extractContentHref(contentRaw.substring(1, contentRaw.length() - 1));
-                } else if (contentRaw.charAt(0) == '{') {
-                    contentUrl = stripTemplate(OAuthManager.extractJsonString(contentRaw, "href")); //$NON-NLS-1$
-                }
-            }
-        }
-
+        var selfUrl = parseSelfHref(linksBlock);
+        var contentUrl = parseContentHref(linksBlock);
         if (contentUrl == null && selfUrl != null) {
             contentUrl = selfUrl + "/content?format=archimate"; //$NON-NLS-1$
         }
+        var updatable = extractTopLevelValue(linksBlock, KEY_UPDATE) != null;
+        return new ModelLinks(selfUrl, contentUrl, updatable);
+    }
 
-        return new RemoteModel(id, name, description, author, lastModified, selfUrl, contentUrl,
-                slug, projectSlug, projectVersion, scopeSlug, projectName, scopeName);
+    private static String parseSelfHref(String linksBlock) {
+        final var selfIdx = linksBlock.indexOf("\"self\""); //$NON-NLS-1$
+        return selfIdx >= 0 ? OAuthManager.extractJsonString(linksBlock.substring(selfIdx), KEY_HREF) : null;
+    }
+
+    // _links.content may be an array (multiple formats with titles) or a single
+    // object pointing at the model's binary content endpoint.
+    private static String parseContentHref(String linksBlock) {
+        final var contentRaw = extractTopLevelValue(linksBlock, "content"); //$NON-NLS-1$
+        if (contentRaw == null || contentRaw.isEmpty()) {
+            return null;
+        }
+        if (contentRaw.charAt(0) == '[') {
+            return extractContentHref(contentRaw.substring(1, contentRaw.length() - 1));
+        }
+        if (contentRaw.charAt(0) == '{') {
+            return stripTemplate(OAuthManager.extractJsonString(contentRaw, KEY_HREF));
+        }
+        return null;
     }
 
     private static String extractContentHref(String contentArray) {
@@ -150,7 +190,7 @@ final class ResponseParser {
             }
             var obj = contentArray.substring(objStart, objEnd + 1);
             var title = OAuthManager.extractJsonString(obj, "title"); //$NON-NLS-1$
-            var href = stripTemplate(OAuthManager.extractJsonString(obj, "href")); //$NON-NLS-1$
+            var href = stripTemplate(OAuthManager.extractJsonString(obj, KEY_HREF));
             if (href != null) {
                 if ("ArchiMate".equals(title)) { //$NON-NLS-1$
                     return href;
@@ -216,11 +256,7 @@ final class ResponseParser {
      * @return parsed page, never {@code null}
      */
     static PagedResult<RemoteProject> parseProjectPage(String json, int requestedPage) {
-        var items = parseProjectList(json);
-        var totalElements = OAuthManager.extractJsonLong(json, "totalElements", items.size()); //$NON-NLS-1$
-        var totalPages = (int) OAuthManager.extractJsonLong(json, "totalPages", 1); //$NON-NLS-1$
-        var pageNum = (int) OAuthManager.extractJsonLong(json, "number", requestedPage); //$NON-NLS-1$
-        return new PagedResult<>(items, totalElements, totalPages, pageNum);
+        return pagedResult(json, parseProjectList(json), requestedPage);
     }
 
     private static void parseProjectArray(String arrayContent, List<RemoteProject> out) {
@@ -231,22 +267,46 @@ final class ResponseParser {
                 return;
             }
             final var obj = arrayContent.substring(objStart, objEnd + 1);
-            // Top-level extraction skips nested scope.{id,name} and other embedded
-            // references that share field names with the project itself.
-            final var id = extractTopLevelString(obj, "id"); //$NON-NLS-1$
-            final var name = extractTopLevelString(obj, "name"); //$NON-NLS-1$
-            String scopeId = null;
-            String scopeName = null;
-            final var scopeBlock = extractTopLevelObject(obj, "scope"); //$NON-NLS-1$
-            if (scopeBlock != null) {
-                scopeId = OAuthManager.extractJsonString(scopeBlock, "id"); //$NON-NLS-1$
-                scopeName = OAuthManager.extractJsonString(scopeBlock, "name"); //$NON-NLS-1$
-            }
-            if (id != null) {
-                out.add(new RemoteProject(id, name, scopeId, scopeName));
+            var project = parseProject(obj);
+            if (project != null) {
+                out.add(project);
             }
             objStart = arrayContent.indexOf('{', objEnd + 1);
         }
+    }
+
+    private static RemoteProject parseProject(String obj) {
+        // Top-level extraction skips nested scope.{id,name} and other embedded
+        // references that share field names with the project itself.
+        final var id = extractTopLevelString(obj, KEY_ID);
+        if (id == null) {
+            return null;
+        }
+        final var name = extractTopLevelString(obj, KEY_NAME);
+        String scopeId = null;
+        String scopeName = null;
+        final var scopeBlock = extractTopLevelObject(obj, KEY_SCOPE);
+        if (scopeBlock != null) {
+            scopeId = OAuthManager.extractJsonString(scopeBlock, KEY_ID);
+            scopeName = OAuthManager.extractJsonString(scopeBlock, KEY_NAME);
+        }
+        boolean updatable = false;
+        final var linksBlock = extractTopLevelObject(obj, KEY_LINKS);
+        if (linksBlock != null) {
+            updatable = extractTopLevelValue(linksBlock, KEY_UPDATE) != null;
+        }
+        return new RemoteProject(id, name, scopeId, scopeName, updatable);
+    }
+
+    private record ProjectRef(String slug, String version, String name) {
+        static final ProjectRef EMPTY = new ProjectRef(null, null, null);
+    }
+
+    private record ScopeRef(String slug, String name) {
+        static final ScopeRef EMPTY = new ScopeRef(null, null);
+    }
+
+    private record ModelLinks(String selfUrl, String contentUrl, boolean updatable) {
     }
 
 }

@@ -16,7 +16,7 @@ import com.architeezy.archi.connector.api.dto.RemoteModel;
 
 /**
  * Grouping nodes used to back the import wizard's
- * {@code scope → project → model} tree.
+ * {@code scope -> project -> model} tree.
  */
 final class ModelTreeNodes {
 

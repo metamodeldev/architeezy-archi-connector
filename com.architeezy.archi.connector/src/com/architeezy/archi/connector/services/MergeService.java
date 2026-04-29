@@ -18,6 +18,9 @@ import org.eclipse.emf.compare.EMFCompare;
 import org.eclipse.emf.compare.match.DefaultComparisonFactory;
 import org.eclipse.emf.compare.match.DefaultEqualityHelperFactory;
 import org.eclipse.emf.compare.match.DefaultMatchEngine;
+import org.eclipse.emf.compare.match.IComparisonFactory;
+import org.eclipse.emf.compare.match.IMatchEngine;
+import org.eclipse.emf.compare.match.eobject.IEObjectMatcher;
 import org.eclipse.emf.compare.match.eobject.IdentifierEObjectMatcher;
 import org.eclipse.emf.compare.match.impl.MatchEngineFactoryImpl;
 import org.eclipse.emf.compare.match.impl.MatchEngineFactoryRegistryImpl;
@@ -139,7 +142,7 @@ public final class MergeService {
      *
      * <p>
      * The Archi metamodel contains ID-less elements whose identity is tied to
-     * the containment slot they occupy in their identifiable parent — most
+     * the containment slot they occupy in their identifiable parent - most
      * notably {@code IBounds} on every diagram object (single-valued slot)
      * and {@code IDiagramModelBendpoint} on every connection (ordered list).
      * With the stock matcher those elements fall through to proximity
@@ -153,9 +156,10 @@ public final class MergeService {
      */
     private static EMFCompare newEmfCompare() {
         var fallback = DefaultMatchEngine.createDefaultEObjectMatcher(UseIdentifiers.NEVER);
-        var matcher = new IdentifierEObjectMatcher(fallback, new StructuralIdFunction());
+        var idFunction = new StructuralIdFunction();
+        var matcher = new IdentifierEObjectMatcher(fallback, idFunction::apply);
         var comparisonFactory = new DefaultComparisonFactory(new DefaultEqualityHelperFactory());
-        var matchEngineFactory = new MatchEngineFactoryImpl(matcher, comparisonFactory);
+        var matchEngineFactory = new CustomMatchEngineFactory(matcher, comparisonFactory);
         // Out-rank the default factory registered by createStandaloneInstance().
         matchEngineFactory.setRanking(CUSTOM_MATCH_ENGINE_RANKING);
         var registry = MatchEngineFactoryRegistryImpl.createStandaloneInstance();
@@ -172,6 +176,27 @@ public final class MergeService {
         var registry = IMerger.RegistryImpl.createStandaloneInstance();
         var batchMerger = new BatchMerger(registry);
         batchMerger.copyAllRightToLeft(remoteDiffs, new BasicMonitor());
+    }
+
+    /**
+     * Subclass of {@link MatchEngineFactoryImpl} that injects a custom match
+     * engine. The deprecated 2-arg constructor on the parent ignores
+     * extension-point providers; subclassing lets us bind our own
+     * {@link DefaultMatchEngine} without invoking that constructor.
+     */
+    private static final class CustomMatchEngineFactory extends MatchEngineFactoryImpl {
+
+        private final IMatchEngine engine;
+
+        CustomMatchEngineFactory(IEObjectMatcher matcher, IComparisonFactory comparisonFactory) {
+            this.engine = new DefaultMatchEngine(matcher, comparisonFactory);
+        }
+
+        @Override
+        public IMatchEngine getMatchEngine() {
+            return engine;
+        }
+
     }
 
 }

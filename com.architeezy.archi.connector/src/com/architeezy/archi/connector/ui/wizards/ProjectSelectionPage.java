@@ -42,10 +42,12 @@ import com.architeezy.archi.connector.auth.ConnectionProfile;
 
 /**
  * Wizard page for selecting the target project during model export. Projects
- * are grouped by their owning scope so the tree is {@code scope → project}.
+ * are grouped by their owning scope so the tree is {@code scope -> project}.
  */
 @SuppressWarnings("checkstyle:MagicNumber")
 public class ProjectSelectionPage extends WizardPage {
+
+    private EmptyHintBar emptyHint;
 
     private Text searchField;
 
@@ -68,6 +70,8 @@ public class ProjectSelectionPage extends WizardPage {
         var container = new Composite(parent, SWT.NONE);
         container.setLayout(new GridLayout(1, false));
         setControl(container);
+
+        emptyHint = new EmptyHintBar(container);
 
         searchField = new Text(container, SWT.BORDER | SWT.SEARCH | SWT.ICON_SEARCH | SWT.ICON_CANCEL);
         searchField.setMessage(Messages.ProjectPage_searchPlaceholder);
@@ -107,7 +111,7 @@ public class ProjectSelectionPage extends WizardPage {
         var loaded = new ArrayList<RemoteProject>();
         try {
             getContainer().run(true, true, monitor -> loadAllProjectPages(profile, loaded, monitor));
-            updateUiWithProjects(loaded);
+            updateUiWithProjects(loaded, profile);
         } catch (InvocationTargetException e) {
             if (!getControl().isDisposed()) {
                 var cause = e.getCause();
@@ -146,12 +150,20 @@ public class ProjectSelectionPage extends WizardPage {
         }
     }
 
-    private void updateUiWithProjects(List<RemoteProject> projects) {
+    private void updateUiWithProjects(List<RemoteProject> projects, ConnectionProfile profile) {
         if (getControl().isDisposed()) {
             return;
         }
-        allProjects = projects;
+        var writable = new ArrayList<RemoteProject>();
+        for (var p : projects) {
+            if (p.updatable()) {
+                writable.add(p);
+            }
+        }
+        allProjects = writable;
         applyFilter(searchField.getText());
+        emptyHint.show(writable.isEmpty()
+                ? NLS.bind(Messages.ProjectPage_noProjectsHint, profile.getServerUrl()) : null);
         setMessage(getDescription());
     }
 

@@ -179,7 +179,7 @@ public class ArchiteezyClient {
     }
 
     /**
-     * Unwraps Spring's default {@code byte[]} → JSON serialization. When the
+     * Unwraps Spring's default {@code byte[]} -> JSON serialization. When the
      * server responds with {@code "<base64>"} we strip the quotes and decode;
      * any other body is returned verbatim so callers stay compatible with
      * servers that send the raw {@code .archimate} XML directly.
@@ -191,14 +191,8 @@ public class ArchiteezyClient {
         if (body == null || body.length < 2) {
             return body;
         }
-        var start = 0;
-        var end = body.length;
-        while (start < end && Character.isWhitespace(body[start])) {
-            start++;
-        }
-        while (end > start && Character.isWhitespace(body[end - 1])) {
-            end--;
-        }
+        var start = skipLeadingWhitespace(body);
+        var end = skipTrailingWhitespace(body, start);
         if (end - start < 2 || body[start] != '"' || body[end - 1] != '"') {
             return body;
         }
@@ -208,6 +202,22 @@ public class ArchiteezyClient {
         } catch (IllegalArgumentException ignored) {
             return body;
         }
+    }
+
+    private static int skipLeadingWhitespace(byte[] body) {
+        var i = 0;
+        while (i < body.length && Character.isWhitespace(body[i])) {
+            i++;
+        }
+        return i;
+    }
+
+    private static int skipTrailingWhitespace(byte[] body, int start) {
+        var i = body.length;
+        while (i > start && Character.isWhitespace(body[i - 1])) {
+            i--;
+        }
+        return i;
     }
 
     // -----------------------------------------------------------------------

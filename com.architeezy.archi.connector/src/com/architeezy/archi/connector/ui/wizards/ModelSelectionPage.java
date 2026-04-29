@@ -55,13 +55,15 @@ import com.architeezy.archi.connector.util.DateFormats;
 
 /**
  * Page for selecting a remote model to import. Models are arranged in a
- * {@code scope → project → model} tree.
+ * {@code scope -> project -> model} tree.
  */
 @SuppressWarnings({ "checkstyle:MagicNumber", "checkstyle:ClassDataAbstractionCoupling",
         "checkstyle:ClassFanOutComplexity" })
 public class ModelSelectionPage extends WizardPage {
 
     private static final String ARCHIMATE_EXTENSION = ".archimate";
+
+    private EmptyHintBar emptyHint;
 
     private Text searchField;
 
@@ -87,6 +89,7 @@ public class ModelSelectionPage extends WizardPage {
         container.setLayout(new GridLayout(1, false));
         setControl(container);
 
+        emptyHint = new EmptyHintBar(container);
         createSearchBar(container);
         createTree(container);
         createSaveAsRow(container);
@@ -236,6 +239,8 @@ public class ModelSelectionPage extends WizardPage {
         }
         allModels = models;
         applyFilter(searchField.getText());
+        emptyHint.show(models.isEmpty()
+                ? NLS.bind(Messages.ModelPage_noModelsHint, profile.getServerUrl()) : null);
         if (profile.getStatus() == ProfileStatus.CONNECTED) {
             setMessage(getDescription());
         } else {
@@ -267,7 +272,7 @@ public class ModelSelectionPage extends WizardPage {
     }
 
     /**
-     * A model is kept when the query is contained in any text on its path —
+     * A model is kept when the query is contained in any text on its path -
      * scope, project, or model. A hit anywhere up the path pulls the whole
      * branch into view, so e.g. typing a scope name lists every model under it.
      *
@@ -276,12 +281,13 @@ public class ModelSelectionPage extends WizardPage {
      * @return {@code true} if any name or slug along the model's path contains the query
      */
     static boolean matches(RemoteModel m, String lcQuery) {
-        return containsLc(m.name(), lcQuery)
-                || containsLc(m.slug(), lcQuery)
-                || containsLc(m.projectName(), lcQuery)
-                || containsLc(m.projectSlug(), lcQuery)
-                || containsLc(m.scopeName(), lcQuery)
-                || containsLc(m.scopeSlug(), lcQuery);
+        for (var s : new String[] { m.name(), m.slug(), m.projectName(), m.projectSlug(),
+                m.scopeName(), m.scopeSlug() }) {
+            if (containsLc(s, lcQuery)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean containsLc(String haystack, String lcNeedle) {
@@ -289,7 +295,7 @@ public class ModelSelectionPage extends WizardPage {
     }
 
     /**
-     * Groups models into {@code scope → project → model}, preserving the
+     * Groups models into {@code scope -> project -> model}, preserving the
      * server-supplied ordering of the input list within each level.
      *
      * @param models the flat list of models from the server
@@ -303,7 +309,7 @@ public class ModelSelectionPage extends WizardPage {
             var scopeLabel = m.scopeName() != null ? m.scopeName()
                     : (m.scopeSlug() != null ? m.scopeSlug() : Messages.ModelPage_unknownScope);
             var scope = scopes.computeIfAbsent(scopeKey,
-                    k -> new ScopeNode(scopeLabel, new LinkedHashMap<String, ProjectNode>()));
+                    k -> new ScopeNode(scopeLabel, new LinkedHashMap<>()));
 
             var projectKey = (m.projectSlug() != null ? m.projectSlug() : "__none__") //$NON-NLS-1$
                     + "@" + (m.projectVersion() != null ? m.projectVersion() : ""); //$NON-NLS-1$ //$NON-NLS-2$
@@ -368,10 +374,15 @@ public class ModelSelectionPage extends WizardPage {
         if (getControl() == null || getControl().isDisposed()) {
             return;
         }
+        var selected = getSelectedModel();
+        if (selected != null && !selected.updatable()) {
+            setMessage(Messages.ModelPage_readOnlyWarning, WARNING);
+            return;
+        }
         var file = getTargetFile();
         if (file != null && file.isFile()) {
             setMessage(NLS.bind(Messages.ModelPage_overwriteWarning, file.getName()), WARNING);
-        } else if (getSelectedModel() != null) {
+        } else if (selected != null) {
             setMessage(getDescription());
         }
     }
@@ -442,7 +453,8 @@ public class ModelSelectionPage extends WizardPage {
                 return project.label();
             }
             if (element instanceof RemoteModel m) {
-                return m.name() != null ? m.name() : m.id();
+                var label = m.name() != null ? m.name() : m.id();
+                return m.updatable() ? label : label + " " + Messages.ModelPage_readOnlySuffix; //$NON-NLS-1$
             }
             return ""; //$NON-NLS-1$
         }
