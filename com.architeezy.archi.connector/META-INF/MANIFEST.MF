@@ -23,7 +23,8 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.emf.compare,
  org.eclipse.emf.edit,
  org.eclipse.emf.compare.edit,
- org.eclipse.emf.compare.ide.ui
+ org.eclipse.emf.compare.ide.ui,
+ com.google.guava
 Export-Package: com.architeezy.archi.connector,
  com.architeezy.archi.connector.auth,
  com.architeezy.archi.connector.api,

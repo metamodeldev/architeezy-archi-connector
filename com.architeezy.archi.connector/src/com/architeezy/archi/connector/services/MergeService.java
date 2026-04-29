@@ -15,13 +15,21 @@ import org.eclipse.emf.compare.ConflictKind;
 import org.eclipse.emf.compare.DifferenceSource;
 import org.eclipse.emf.compare.DifferenceState;
 import org.eclipse.emf.compare.EMFCompare;
+import org.eclipse.emf.compare.match.DefaultComparisonFactory;
+import org.eclipse.emf.compare.match.DefaultEqualityHelperFactory;
+import org.eclipse.emf.compare.match.DefaultMatchEngine;
+import org.eclipse.emf.compare.match.eobject.IdentifierEObjectMatcher;
+import org.eclipse.emf.compare.match.impl.MatchEngineFactoryImpl;
+import org.eclipse.emf.compare.match.impl.MatchEngineFactoryRegistryImpl;
 import org.eclipse.emf.compare.merge.BatchMerger;
 import org.eclipse.emf.compare.merge.IMerger;
 import org.eclipse.emf.compare.scope.DefaultComparisonScope;
+import org.eclipse.emf.compare.utils.UseIdentifiers;
 
 import com.archimatetool.model.IArchimateModel;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.io.ModelSerializer;
+import com.architeezy.archi.connector.model.diff.StructuralIdFunction;
 
 /**
  * Performs 3-way merges for the DIVERGED scenario where both local and remote
@@ -38,6 +46,8 @@ import com.architeezy.archi.connector.io.ModelSerializer;
  */
 @SuppressWarnings("java:S112")
 public final class MergeService {
+
+    private static final int CUSTOM_MATCH_ENGINE_RANKING = 20;
 
     private final ModelSerializer serializer;
 
@@ -109,7 +119,7 @@ public final class MergeService {
         var baseResource = baseModel.eResource();
 
         var scope = new DefaultComparisonScope(localResource, remoteResource, baseResource);
-        var comparison = EMFCompare.builder().build().compare(scope);
+        var comparison = newEmfCompare().compare(scope);
 
         boolean hasRealConflicts = comparison.getConflicts().stream()
                 .anyMatch(c -> c.getKind() == ConflictKind.REAL);
@@ -122,6 +132,35 @@ public final class MergeService {
         var registry = IMerger.RegistryImpl.createStandaloneInstance();
         return MergePreparation.needsResolution(
                 new PendingConflict(comparison, localResource, registry, remote, modelId));
+    }
+
+    /**
+     * Builds an {@link EMFCompare} configured with a {@link StructuralIdFunction}.
+     *
+     * <p>
+     * The Archi metamodel contains ID-less elements whose identity is tied to
+     * the containment slot they occupy in their identifiable parent — most
+     * notably {@code IBounds} on every diagram object (single-valued slot)
+     * and {@code IDiagramModelBendpoint} on every connection (ordered list).
+     * With the stock matcher those elements fall through to proximity
+     * matching, and a heavy same-slot edit on both sides can be reported as
+     * deletion plus addition of a different element. The custom ID function
+     * gives every such structural child a synthetic identifier so all three
+     * sides of a 3-way merge match into one {@code Match} and the change
+     * surfaces as an attribute-level conflict.
+     *
+     * @return a configured {@link EMFCompare} instance
+     */
+    private static EMFCompare newEmfCompare() {
+        var fallback = DefaultMatchEngine.createDefaultEObjectMatcher(UseIdentifiers.NEVER);
+        var matcher = new IdentifierEObjectMatcher(fallback, new StructuralIdFunction());
+        var comparisonFactory = new DefaultComparisonFactory(new DefaultEqualityHelperFactory());
+        var matchEngineFactory = new MatchEngineFactoryImpl(matcher, comparisonFactory);
+        // Out-rank the default factory registered by createStandaloneInstance().
+        matchEngineFactory.setRanking(CUSTOM_MATCH_ENGINE_RANKING);
+        var registry = MatchEngineFactoryRegistryImpl.createStandaloneInstance();
+        registry.add(matchEngineFactory);
+        return EMFCompare.builder().setMatchEngineFactoryRegistry(registry).build();
     }
 
     private static void applyAllRemoteChanges(Comparison comparison) {
