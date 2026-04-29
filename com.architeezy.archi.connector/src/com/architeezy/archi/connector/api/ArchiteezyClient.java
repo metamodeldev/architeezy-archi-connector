@@ -9,21 +9,30 @@
  */
 package com.architeezy.archi.connector.api;
 
-import java.io.IOException;
+import static com.architeezy.archi.connector.api.HttpHelpers.ACCEPT;
+import static com.architeezy.archi.connector.api.HttpHelpers.APPLICATION_JSON;
+import static com.architeezy.archi.connector.api.HttpHelpers.AUTHORIZATION;
+import static com.architeezy.archi.connector.api.HttpHelpers.BEARER_PREFIX;
+import static com.architeezy.archi.connector.api.HttpHelpers.CONTENT_TYPE;
+import static com.architeezy.archi.connector.api.HttpHelpers.MSG_REQUEST_FAILED;
+import static com.architeezy.archi.connector.api.HttpHelpers.checkStatus;
+import static com.architeezy.archi.connector.api.HttpHelpers.decodeBase64IfWrapped;
+import static com.architeezy.archi.connector.api.HttpHelpers.describe;
+import static com.architeezy.archi.connector.api.HttpHelpers.sendCancelable;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
+import java.util.Optional;
+import java.util.UUID;
 
 import com.architeezy.archi.connector.api.dto.PagedResult;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.api.dto.RemoteProject;
+import com.architeezy.archi.connector.api.dto.RemoteRepresentation;
 
 /**
  * HTTP client for the Architeezy REST API (HAL+JSON).
@@ -33,21 +42,11 @@ import com.architeezy.archi.connector.api.dto.RemoteProject;
  */
 public class ArchiteezyClient {
 
-    private static final String AUTHORIZATION = "Authorization"; //$NON-NLS-1$
-
-    private static final String BEARER_PREFIX = "Bearer "; //$NON-NLS-1$
-
-    private static final String CONTENT_TYPE = "Content-Type"; //$NON-NLS-1$
-
-    private static final String MSG_REQUEST_FAILED = "Request failed: "; //$NON-NLS-1$
-
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private static final Duration TRANSFER_TIMEOUT = Duration.ofSeconds(120);
-
-    private static final long CANCEL_POLL_INTERVAL_MS = 100L;
 
     /**
      * URL-encoded value of the ArchiMate model content type. The model listing
@@ -79,8 +78,7 @@ public class ArchiteezyClient {
             throws ApiException {
         var url = serverUrl + "/api/models?page=" + page + "&size=" + size //$NON-NLS-1$ //$NON-NLS-2$
                 + ARCHIMATE_CONTENT_TYPE_FILTER;
-        var json = get(url, accessToken);
-        return ResponseParser.parseModelPage(json, page);
+        return ResponseParser.parseModelPage(get(url, accessToken), page);
     }
 
     /**
@@ -92,12 +90,9 @@ public class ArchiteezyClient {
      * @return paged list of models
      * @throws ApiException on HTTP or I/O error
      */
-    public PagedResult<RemoteModel> listModels(String serverUrl, String accessToken, int page)
-            throws ApiException {
-        var url = serverUrl + "/api/models?page=" + page //$NON-NLS-1$
-                + ARCHIMATE_CONTENT_TYPE_FILTER;
-        var json = get(url, accessToken);
-        return ResponseParser.parseModelPage(json, page);
+    public PagedResult<RemoteModel> listModels(String serverUrl, String accessToken, int page) throws ApiException {
+        var url = serverUrl + "/api/models?page=" + page + ARCHIMATE_CONTENT_TYPE_FILTER; //$NON-NLS-1$
+        return ResponseParser.parseModelPage(get(url, accessToken), page);
     }
 
     /**
@@ -110,9 +105,28 @@ public class ArchiteezyClient {
      * @throws ApiException on HTTP or I/O error
      */
     public RemoteModel getModel(String serverUrl, String accessToken, String modelId) throws ApiException {
-        var url = serverUrl + "/api/models/" + modelId; //$NON-NLS-1$
-        var json = get(url, accessToken);
-        return ResponseParser.parseModel(json);
+        return ResponseParser.parseModel(get(serverUrl + "/api/models/" + modelId, accessToken)); //$NON-NLS-1$
+    }
+
+    /**
+     * Finds a representation in the given model by its target-object UUID.
+     * The server stores each EObject's id as
+     * {@code UUID5(model.id, archimateId)}; the connector recomputes that
+     * value via {@link com.architeezy.archi.connector.util.UuidV5}.
+     *
+     * @param serverUrl base URL of the Architeezy server
+     * @param accessToken OAuth2 bearer token
+     * @param modelId the model id (UUID)
+     * @param targetObjectId the target-object UUID (the EObject id)
+     * @return the matching representation, or empty when none found
+     * @throws ApiException on HTTP or I/O error
+     */
+    public Optional<RemoteRepresentation> findRepresentationByTargetObjectId(String serverUrl,
+            String accessToken, String modelId, UUID targetObjectId) throws ApiException {
+        var url = serverUrl + "/api/representations?model.id=" + modelId //$NON-NLS-1$
+                + "&targetObjectId=" + targetObjectId + "&page=0&size=2"; //$NON-NLS-1$ //$NON-NLS-2$
+        var items = ResponseParser.parseRepresentationList(get(url, accessToken));
+        return items.isEmpty() ? Optional.empty() : Optional.of(items.get(0));
     }
 
     /**
@@ -126,8 +140,7 @@ public class ArchiteezyClient {
      * @return raw content bytes
      * @throws ApiException on HTTP, I/O error or cancellation
      */
-    public byte[] getModelContent(String accessToken, String contentUrl, CancelSignal cancel)
-            throws ApiException {
+    public byte[] getModelContent(String accessToken, String contentUrl, CancelSignal cancel) throws ApiException {
         if (contentUrl == null || contentUrl.isBlank()) {
             throw new ApiException("Model has no content URL", null); //$NON-NLS-1$
         }
@@ -138,13 +151,12 @@ public class ArchiteezyClient {
                     // The /content endpoint only accepts application/json (other Accept values
                     // get a 406). Spring serializes the byte[] as a JSON-quoted base64 string,
                     // which we unwrap below.
-                    .header("Accept", "application/json") //$NON-NLS-1$ //$NON-NLS-2$
+                    .header(ACCEPT, APPLICATION_JSON)
                     .GET();
             if (accessToken != null && !accessToken.isEmpty()) {
                 builder.header(AUTHORIZATION, BEARER_PREFIX + accessToken);
             }
-            var request = builder.build();
-            var response = sendCancelable(request, HttpResponse.BodyHandlers.ofByteArray(), cancel);
+            var response = sendCancelable(http, builder.build(), HttpResponse.BodyHandlers.ofByteArray(), cancel);
             checkStatus(response.statusCode(), contentUrl);
             return decodeBase64IfWrapped(response.body());
         } catch (ApiException e) {
@@ -155,69 +167,6 @@ public class ArchiteezyClient {
         } catch (Exception e) {
             throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         }
-    }
-
-    /**
-     * Builds a non-null one-line description for an exception, falling back to
-     * the runtime class name when {@link Throwable#getMessage()} is {@code null}.
-     * Avoids surfacing the literal text {@code "Request failed: null"} to the
-     * user when an underlying error (e.g. a bare {@link NullPointerException})
-     * carries no message of its own.
-     *
-     * @param t the throwable to summarize
-     * @return a non-null description suitable for end-user error text
-     */
-    private static String describe(Throwable t) {
-        if (t == null) {
-            return "unknown error"; //$NON-NLS-1$
-        }
-        final var msg = t.getMessage();
-        if (msg != null && !msg.isBlank()) {
-            return msg;
-        }
-        return t.getClass().getSimpleName();
-    }
-
-    /**
-     * Unwraps Spring's default {@code byte[]} -> JSON serialization. When the
-     * server responds with {@code "<base64>"} we strip the quotes and decode;
-     * any other body is returned verbatim so callers stay compatible with
-     * servers that send the raw {@code .archimate} XML directly.
-     *
-     * @param body the raw response body bytes
-     * @return decoded bytes, or the input unchanged when no JSON wrapper was detected
-     */
-    private static byte[] decodeBase64IfWrapped(byte[] body) {
-        if (body == null || body.length < 2) {
-            return body;
-        }
-        var start = skipLeadingWhitespace(body);
-        var end = skipTrailingWhitespace(body, start);
-        if (end - start < 2 || body[start] != '"' || body[end - 1] != '"') {
-            return body;
-        }
-        try {
-            var b64 = new String(body, start + 1, end - start - 2, StandardCharsets.US_ASCII);
-            return Base64.getDecoder().decode(b64);
-        } catch (IllegalArgumentException ignored) {
-            return body;
-        }
-    }
-
-    private static int skipLeadingWhitespace(byte[] body) {
-        var i = 0;
-        while (i < body.length && Character.isWhitespace(body[i])) {
-            i++;
-        }
-        return i;
-    }
-
-    private static int skipTrailingWhitespace(byte[] body, int start) {
-        var i = body.length;
-        while (i > start && Character.isWhitespace(body[i - 1])) {
-            i--;
-        }
-        return i;
     }
 
     // -----------------------------------------------------------------------
@@ -232,9 +181,7 @@ public class ArchiteezyClient {
      * @throws ApiException on HTTP or I/O error
      */
     public List<RemoteProject> listProjects(String serverUrl, String accessToken) throws ApiException {
-        var url = serverUrl + "/api/projects?size=100"; //$NON-NLS-1$
-        var json = get(url, accessToken);
-        return ResponseParser.parseProjectList(json);
+        return ResponseParser.parseProjectList(get(serverUrl + "/api/projects?size=100", accessToken)); //$NON-NLS-1$
     }
 
     /**
@@ -248,9 +195,8 @@ public class ArchiteezyClient {
      */
     public PagedResult<RemoteProject> listProjectsPage(String serverUrl, String accessToken, int page)
             throws ApiException {
-        var url = serverUrl + "/api/projects?page=" + page; //$NON-NLS-1$
-        var json = get(url, accessToken);
-        return ResponseParser.parseProjectPage(json, page);
+        return ResponseParser.parseProjectPage(
+                get(serverUrl + "/api/projects?page=" + page, accessToken), page); //$NON-NLS-1$
     }
 
     // -----------------------------------------------------------------------
@@ -299,7 +245,7 @@ public class ArchiteezyClient {
                     .header(CONTENT_TYPE, "multipart/form-data; boundary=" + boundary) //$NON-NLS-1$
                     .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                     .build();
-            var response = sendCancelable(request, HttpResponse.BodyHandlers.ofString(), cancel);
+            var response = sendCancelable(http, request, HttpResponse.BodyHandlers.ofString(), cancel);
             checkStatus(response.statusCode(), url);
             var responseBody = response.body();
             if (responseBody != null && responseBody.contains("\"_links\"")) { //$NON-NLS-1$
@@ -361,7 +307,7 @@ public class ArchiteezyClient {
                     .header(CONTENT_TYPE, "application/octet-stream") //$NON-NLS-1$
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
                     .build();
-            var response = sendCancelable(request, HttpResponse.BodyHandlers.ofString(), cancel);
+            var response = sendCancelable(http, request, HttpResponse.BodyHandlers.ofString(), cancel);
             checkStatus(response.statusCode(), url);
             var body = response.body();
             if (body != null && body.contains("\"lastModificationDateTime\"")) { //$NON-NLS-1$
@@ -393,8 +339,7 @@ public class ArchiteezyClient {
                     .header(AUTHORIZATION, BEARER_PREFIX + accessToken)
                     .DELETE()
                     .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.discarding());
-            checkStatus(response.statusCode(), modelUrl);
+            checkStatus(http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode(), modelUrl);
         } catch (ApiException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -404,84 +349,9 @@ public class ArchiteezyClient {
             throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
         }
     }
-
-    // -----------------------------------------------------------------------
-    // Internal helpers
 
     private String get(String url, String accessToken) throws ApiException {
-        try {
-            var builder = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(REQUEST_TIMEOUT)
-                    .header("Accept", "application/json") //$NON-NLS-1$ //$NON-NLS-2$
-                    .GET();
-            if (accessToken != null && !accessToken.isEmpty()) {
-                builder.header(AUTHORIZATION, BEARER_PREFIX + accessToken);
-            }
-            var request = builder.build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            checkStatus(response.statusCode(), url);
-            return response.body();
-        } catch (ApiException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
-        } catch (Exception e) {
-            throw new ApiException(MSG_REQUEST_FAILED + describe(e), e);
-        }
-    }
-
-    private <T> HttpResponse<T> sendCancelable(HttpRequest request, HttpResponse.BodyHandler<T> handler,
-            CancelSignal cancel) throws IOException, InterruptedException {
-        if (cancel == null || cancel == CancelSignal.NEVER) {
-            return http.send(request, handler);
-        }
-        var future = http.sendAsync(request, handler);
-        var watcher = new Thread(() -> pollCancel(future, cancel), "ArchiteezyCancelWatcher"); //$NON-NLS-1$
-        watcher.setDaemon(true);
-        watcher.start();
-        try {
-            return future.get();
-        } catch (CancellationException e) {
-            throw new InterruptedException("HTTP transfer cancelled"); //$NON-NLS-1$
-        } catch (ExecutionException e) {
-            var cause = e.getCause();
-            if (cause instanceof IOException io) {
-                throw io;
-            }
-            if (cause instanceof InterruptedException ie) {
-                throw ie;
-            }
-            if (cause instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new IOException(cause == null ? e.getMessage() : cause.getMessage(), cause);
-        } finally {
-            watcher.interrupt();
-        }
-    }
-
-    private static void pollCancel(java.util.concurrent.CompletableFuture<?> future, CancelSignal cancel) {
-        while (!future.isDone()) {
-            if (cancel.isCanceled()) {
-                future.cancel(true);
-                return;
-            }
-            try {
-                Thread.sleep(CANCEL_POLL_INTERVAL_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-        }
-    }
-
-    @SuppressWarnings("checkstyle:MagicNumber")
-    private static void checkStatus(int status, String url) throws ApiException {
-        if (status < 200 || status >= 300) {
-            throw new ApiException(status, "HTTP " + status + " for " + url); //$NON-NLS-1$ //$NON-NLS-2$
-        }
+        return HttpHelpers.get(http, url, accessToken, REQUEST_TIMEOUT);
     }
 
 }

@@ -20,6 +20,7 @@ import java.util.List;
 import com.architeezy.archi.connector.api.dto.PagedResult;
 import com.architeezy.archi.connector.api.dto.RemoteModel;
 import com.architeezy.archi.connector.api.dto.RemoteProject;
+import com.architeezy.archi.connector.api.dto.RemoteRepresentation;
 import com.architeezy.archi.connector.auth.OAuthManager;
 
 /**
@@ -47,6 +48,8 @@ final class ResponseParser {
 
     private static final String KEY_NUMBER = "number"; //$NON-NLS-1$
 
+    private static final String KEY_EMBEDDED = "\"_embedded\""; //$NON-NLS-1$
+
     private ResponseParser() {
     }
 
@@ -61,7 +64,7 @@ final class ResponseParser {
         var items = new ArrayList<RemoteModel>();
 
         // Extract _embedded.models array
-        var embeddedIdx = json.indexOf("\"_embedded\""); //$NON-NLS-1$
+        var embeddedIdx = json.indexOf(KEY_EMBEDDED);
         if (embeddedIdx >= 0) {
             var arrStart = json.indexOf('[', embeddedIdx);
             if (arrStart >= 0) {
@@ -222,7 +225,7 @@ final class ResponseParser {
         var projects = new ArrayList<RemoteProject>();
 
         // Try HAL+JSON: _embedded.projects array
-        var embeddedIdx = json.indexOf("\"_embedded\""); //$NON-NLS-1$
+        var embeddedIdx = json.indexOf(KEY_EMBEDDED);
         if (embeddedIdx >= 0) {
             var projIdx = json.indexOf("\"projects\"", embeddedIdx); //$NON-NLS-1$
             if (projIdx >= 0) {
@@ -296,6 +299,65 @@ final class ResponseParser {
             updatable = extractTopLevelValue(linksBlock, KEY_UPDATE) != null;
         }
         return new RemoteProject(id, name, scopeId, scopeName, updatable);
+    }
+
+    /**
+     * Parses a HAL+JSON page of representations and returns the embedded items.
+     *
+     * @param json the response body
+     * @return parsed representations, possibly empty, never {@code null}
+     */
+    static List<RemoteRepresentation> parseRepresentationList(String json) {
+        var items = new ArrayList<RemoteRepresentation>();
+        var embeddedIdx = json.indexOf(KEY_EMBEDDED);
+        if (embeddedIdx < 0) {
+            return items;
+        }
+        var arrIdx = json.indexOf("\"representations\"", embeddedIdx); //$NON-NLS-1$
+        if (arrIdx < 0) {
+            return items;
+        }
+        var arrStart = json.indexOf('[', arrIdx);
+        if (arrStart < 0) {
+            return items;
+        }
+        var arrEnd = findMatchingBracket(json, arrStart, '[', ']');
+        if (arrEnd <= arrStart) {
+            return items;
+        }
+        parseRepresentationArray(json.substring(arrStart + 1, arrEnd), items);
+        return items;
+    }
+
+    private static void parseRepresentationArray(String arrayContent, List<RemoteRepresentation> out) {
+        var objStart = arrayContent.indexOf('{');
+        while (objStart >= 0) {
+            var objEnd = findMatchingBracket(arrayContent, objStart, '{', '}');
+            if (objEnd < 0) {
+                return;
+            }
+            var r = parseRepresentation(arrayContent.substring(objStart, objEnd + 1));
+            if (r != null) {
+                out.add(r);
+            }
+            objStart = arrayContent.indexOf('{', objEnd + 1);
+        }
+    }
+
+    private static RemoteRepresentation parseRepresentation(String obj) {
+        var id = extractTopLevelString(obj, KEY_ID);
+        if (id == null) {
+            return null;
+        }
+        var slug = extractTopLevelString(obj, KEY_SLUG);
+        return new RemoteRepresentation(id, slug,
+                extractTopLevelBoolean(obj, "isDefault"), //$NON-NLS-1$
+                extractTopLevelBoolean(obj, "isRoot")); //$NON-NLS-1$
+    }
+
+    private static boolean extractTopLevelBoolean(String json, String key) {
+        var raw = extractTopLevelValue(json, key);
+        return raw != null && "true".equals(raw.trim()); //$NON-NLS-1$
     }
 
     private record ProjectRef(String slug, String version, String name) {

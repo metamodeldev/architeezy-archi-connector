@@ -333,4 +333,26 @@ class ResponseParserTests {
         assertNull(m.contentUrl());
     }
 
+    @Test
+    void parseRepresentationListReadsCoreFields() {
+        var json = "{\"_embedded\":{\"representations\":["
+                + "{\"id\":\"r1\",\"slug\":\"home-view\",\"isDefault\":true,\"isRoot\":true},"
+                + "{\"id\":\"r2\",\"slug\":\"flow\",\"isDefault\":false,\"isRoot\":false}"
+                + "]}}";
+        var list = ResponseParser.parseRepresentationList(json);
+        assertEquals(2, list.size());
+        assertEquals("r1", list.get(0).id());
+        assertEquals("home-view", list.get(0).slug());
+        assertTrue(list.get(0).isDefault());
+        assertTrue(list.get(0).isRoot());
+        assertFalse(list.get(1).isDefault());
+        assertFalse(list.get(1).isRoot());
+    }
+
+    @Test
+    void parseRepresentationListEmptyWhenAbsent() {
+        assertTrue(ResponseParser.parseRepresentationList("{\"page\":{\"totalElements\":0}}").isEmpty());
+        assertTrue(ResponseParser.parseRepresentationList("{\"_embedded\":{}}").isEmpty());
+    }
+
 }
