@@ -14,14 +14,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Collections;
 
+import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 
+import com.archimatetool.editor.model.IArchiveManager;
 import com.archimatetool.model.IArchimateModel;
-import com.archimatetool.model.util.ArchimateResourceFactory;
 
 /**
  * Serializes and deserializes IArchimateModel objects using the native Archi
- * XMI format via ArchimateResourceFactory.
+ * archive format via {@link IArchiveManager}, so embedded images survive a
+ * round trip.
  *
  * All operations use a temporary file to avoid partial writes.
  */
@@ -33,9 +35,8 @@ public final class ModelSerializer {
     }
 
     /**
-     * Serializes a model to its native XMI representation.
-     * A deep copy is made so the original model is not attached to the temporary
-     * Resource.
+     * Serializes a model to its native archive representation, preserving any
+     * embedded images carried by its {@link IArchiveManager}.
      *
      * @param model the model to serialize
      * @return the serialized model content as bytes
@@ -44,9 +45,16 @@ public final class ModelSerializer {
     public byte[] serialize(IArchimateModel model) throws IOException {
         var tmp = File.createTempFile("archi-connector-", ".archimate"); //$NON-NLS-1$ //$NON-NLS-2$
         try {
-            var resource = ArchimateResourceFactory.createNewResource(tmp);
-            resource.getContents().add(EcoreUtil.copy(model));
-            resource.save(Collections.emptyMap());
+            var copy = EcoreUtil.copy(model);
+            copy.setFile(tmp);
+
+            var sourceManager = (IArchiveManager) model.getAdapter(IArchiveManager.class);
+            var copyManager = (sourceManager != null)
+                    ? sourceManager.clone(copy)
+                    : IArchiveManager.FACTORY.createArchiveManager(copy);
+            copy.setAdapter(IArchiveManager.class, copyManager);
+
+            copyManager.saveModel();
             return Files.readAllBytes(tmp.toPath());
         } finally {
             Files.deleteIfExists(tmp.toPath());
@@ -54,12 +62,13 @@ public final class ModelSerializer {
     }
 
     /**
-     * Deserializes XMI bytes into a transient IArchimateModel without persisting
-     * to any user-visible file. The model is backed by a temporary file that is
-     * scheduled for deletion on JVM exit. Use this when you need the object graph
-     * for comparison or import operations, not for user-facing model management.
+     * Deserializes archive bytes into a transient IArchimateModel without
+     * persisting to any user-visible file. The model is backed by a temporary
+     * file scheduled for deletion on JVM exit. Use this when you need the
+     * object graph for comparison or import operations, not for user-facing
+     * model management.
      *
-     * @param data the XMI data to deserialize
+     * @param data the archive data to deserialize
      * @return the deserialized IArchimateModel
      * @throws IOException if the data is invalid or an I/O error occurs
      */
@@ -70,11 +79,12 @@ public final class ModelSerializer {
     }
 
     /**
-     * Deserializes XMI bytes into an IArchimateModel loaded at {@code targetFile}.
-     * The returned model is attached to a Resource backed by {@code targetFile},
-     * ready to be opened by IEditorModelManager.
+     * Deserializes archive bytes into an IArchimateModel loaded at
+     * {@code targetFile}. The returned model is attached to a Resource backed
+     * by {@code targetFile}, has a fresh {@link IArchiveManager} adapter, and
+     * is ready to be opened by IEditorModelManager or fed to ModelImporter.
      *
-     * @param data the XMI data to deserialize
+     * @param data the archive data to deserialize
      * @param targetFile the file where the model will be loaded
      * @return the deserialized IArchimateModel
      * @throws IOException if the data is invalid or an I/O error occurs
@@ -82,7 +92,7 @@ public final class ModelSerializer {
     public IArchimateModel deserialize(byte[] data, File targetFile) throws IOException {
         Files.write(targetFile.toPath(), data);
 
-        var resource = ArchimateResourceFactory.createNewResource(targetFile);
+        Resource resource = IArchiveManager.FACTORY.createResource(targetFile);
         try {
             resource.load(Collections.emptyMap());
         } catch (Exception e) {
@@ -97,6 +107,11 @@ public final class ModelSerializer {
 
         var model = (IArchimateModel) resource.getContents().get(0);
         model.setFile(targetFile);
+
+        var archiveManager = IArchiveManager.FACTORY.createArchiveManager(model);
+        model.setAdapter(IArchiveManager.class, archiveManager);
+        archiveManager.loadImages();
+
         return model;
     }
 

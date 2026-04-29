@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      archi_version:
+        description: 'Archi version to build against'
+        required: false
+        default: '5.9.0'
+
+permissions:
+  contents: write
+
+env:
+  ARCHI_VERSION: ${{ github.event.inputs.archi_version || '5.9.0' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache Archi runtime
+        id: archi-cache
+        uses: actions/cache@v5
+        with:
+          path: archi-runtime
+          key: archi-${{ env.ARCHI_VERSION }}-linux64
+
+      - name: Download Archi
+        if: steps.archi-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p archi-runtime
+          curl -fL -o archi.tgz \
+            "https://github.com/archimatetool/archi.io/releases/download/${ARCHI_VERSION}/Archi-Linux64-${ARCHI_VERSION}.tgz"
+          tar -xzf archi.tgz -C archi-runtime
+          rm archi.tgz
+
+      - name: Resolve archi_home
+        id: archi
+        run: |
+          archi_home=$(find "${GITHUB_WORKSPACE}/archi-runtime" -maxdepth 3 -type d -name plugins -print -quit | xargs dirname)
+          if [ -z "$archi_home" ] || [ ! -d "$archi_home" ]; then
+            echo "Could not locate Archi installation under archi-runtime/" >&2
+            ls -la archi-runtime
+            exit 1
+          fi
+          echo "home=$archi_home" >> "$GITHUB_OUTPUT"
+          echo "Archi home: $archi_home"
+
+      - name: Build with Maven
+        run: |
+          xvfb-run --auto-servernum ./mvnw -B \
+            -Darchi_home="${{ steps.archi.outputs.home }}" \
+            clean verify
+
+      - name: Locate archiplugin artifact
+        id: artifact
+        run: |
+          file=$(ls com.architeezy.archi.connector/target/*.archiplugin | head -1)
+          if [ -z "$file" ]; then
+            echo "No .archiplugin produced" >&2
+            ls com.architeezy.archi.connector/target/
+            exit 1
+          fi
+          echo "path=$file" >> "$GITHUB_OUTPUT"
+          echo "Built: $file"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: archiplugin
+          path: ${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.artifact.outputs.path }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

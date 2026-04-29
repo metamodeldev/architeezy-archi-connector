@@ -8,4 +8,36 @@
     </parent>
     <artifactId>com.architeezy.archi.connector</artifactId>
     <packaging>eclipse-plugin</packaging>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>build-archiplugin</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <property name="staging" value="${project.build.directory}/archiplugin-staging"/>
+                                <property name="bundle-jar-name" value="${project.artifactId}_${unqualifiedVersion}.${buildQualifier}.jar"/>
+                                <property name="archiplugin-file" value="${project.build.directory}/architeezy-connector-${unqualifiedVersion}.${buildQualifier}.archiplugin"/>
+                                <delete dir="${staging}"/>
+                                <mkdir dir="${staging}"/>
+                                <echo file="${staging}/archi-plugin">Magic file to signify this is an Archi plug-in bundle.</echo>
+                                <copy file="${project.build.directory}/${project.artifactId}-${project.version}.jar"
+                                      tofile="${staging}/${bundle-jar-name}"/>
+                                <zip destfile="${archiplugin-file}" basedir="${staging}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

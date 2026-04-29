@@ -86,8 +86,7 @@ You need JDK 21 and a local [Archi](https://www.archimatetool.com/) 5.8+ install
 target platform).
 
 ```bash
-JAVA_HOME=/path/to/jdk-21 \
-  ./mvnw clean verify -Darchi_home=/path/to/Archi
+JAVA_HOME=/path/to/jdk-21 ./mvnw clean verify -Darchi_home=/path/to/Archi
 ```
 
 The installable `architeezy-connector-<version>.archiplugin` bundle lands under
