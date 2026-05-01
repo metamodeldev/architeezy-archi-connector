@@ -31,6 +31,14 @@ public final class Messages extends NLS {
 
     public static String ProfilePage_deleteTooltip;
 
+    public static String ProfilePage_duplicateTooltip;
+
+    public static String ProfilePage_resetDefaultTooltip;
+
+    public static String ProfilePage_resetDefaultTitle;
+
+    public static String ProfilePage_resetDefaultConfirm;
+
     public static String ProfilePage_detailsGroup;
 
     public static String ProfilePage_nameLabel;

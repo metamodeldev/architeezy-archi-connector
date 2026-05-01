@@ -48,6 +48,8 @@ public class ProfileSelectionPage extends WizardPage {
 
     private Combo profileCombo;
 
+    private Button duplicateButton;
+
     private Button deleteButton;
 
     private Text profileNameText;
@@ -109,7 +111,7 @@ public class ProfileSelectionPage extends WizardPage {
     private void createProfileSection(Composite parent) {
         var row = new Composite(parent, SWT.NONE);
         row.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        row.setLayout(new GridLayout(5, false));
+        row.setLayout(new GridLayout(7, false));
 
         var lbl = new Label(row, SWT.NONE);
         lbl.setText(Messages.ProfilePage_profileLabel);
@@ -125,6 +127,11 @@ public class ProfileSelectionPage extends WizardPage {
         newButton.setToolTipText(Messages.ProfilePage_newTooltip);
         newButton.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> newProfile()));
 
+        duplicateButton = new Button(row, SWT.PUSH);
+        duplicateButton.setImage(sharedImages.getImage(ISharedImages.IMG_TOOL_COPY));
+        duplicateButton.setToolTipText(Messages.ProfilePage_duplicateTooltip);
+        duplicateButton.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> duplicateProfile()));
+
         var saveButton = new Button(row, SWT.PUSH);
         saveButton.setImage(sharedImages.getImage(ISharedImages.IMG_ETOOL_SAVE_EDIT));
         saveButton.setToolTipText(Messages.ProfilePage_saveTooltip);
@@ -134,6 +141,11 @@ public class ProfileSelectionPage extends WizardPage {
         deleteButton.setImage(sharedImages.getImage(ISharedImages.IMG_ETOOL_DELETE));
         deleteButton.setToolTipText(Messages.ProfilePage_deleteTooltip);
         deleteButton.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> deleteProfile()));
+
+        var resetButton = new Button(row, SWT.PUSH);
+        resetButton.setImage(sharedImages.getImage(ISharedImages.IMG_TOOL_UNDO));
+        resetButton.setToolTipText(Messages.ProfilePage_resetDefaultTooltip);
+        resetButton.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> resetDefaultProfile()));
     }
 
     private void createDetailsGroup(Composite parent) {
@@ -188,6 +200,7 @@ public class ProfileSelectionPage extends WizardPage {
         setErrorMessage(null);
         profileNameText.setFocus();
         deleteButton.setEnabled(false);
+        duplicateButton.setEnabled(false);
         updateAuthArea();
         updatePageComplete();
     }
@@ -214,6 +227,35 @@ public class ProfileSelectionPage extends WizardPage {
         }
         isNewMode = false;
         editingProfileName = name;
+        refreshProfileCombo();
+    }
+
+    private void duplicateProfile() {
+        var profile = getSelectedProfile();
+        if (profile == null) {
+            return;
+        }
+        var copy = ConnectorPlugin.getInstance().services().profileRegistry().duplicateProfile(profile.getName());
+        if (copy == null) {
+            return;
+        }
+        isNewMode = false;
+        editingProfileName = copy.getName();
+        ConnectorPlugin.getInstance().services().profileRegistry().setActiveProfile(copy.getName());
+        setErrorMessage(null);
+        refreshProfileCombo();
+    }
+
+    private void resetDefaultProfile() {
+        if (!MessageDialog.openConfirm(getShell(), Messages.ProfilePage_resetDefaultTitle,
+                Messages.ProfilePage_resetDefaultConfirm)) {
+            return;
+        }
+        var defaultProfile = ConnectorPlugin.getInstance().services().profileRegistry().resetDefaultProfile();
+        isNewMode = false;
+        editingProfileName = defaultProfile.getName();
+        ConnectorPlugin.getInstance().services().profileRegistry().setActiveProfile(defaultProfile.getName());
+        setErrorMessage(null);
         refreshProfileCombo();
     }
 
@@ -312,7 +354,9 @@ public class ProfileSelectionPage extends WizardPage {
             selectCurrentProfile(profiles);
         }
 
-        deleteButton.setEnabled(!isNewMode && profileCombo.getSelectionIndex() >= 0);
+        var hasSelection = !isNewMode && profileCombo.getSelectionIndex() >= 0;
+        deleteButton.setEnabled(hasSelection);
+        duplicateButton.setEnabled(hasSelection);
 
         refreshDetails();
         updateAuthArea();

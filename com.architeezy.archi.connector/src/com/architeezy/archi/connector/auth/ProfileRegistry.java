@@ -152,6 +152,74 @@ public class ProfileRegistry {
     }
 
     /**
+     * Creates a copy of the named profile under a unique name (e.g. "Foo (copy)",
+     * "Foo (copy 2)") and persists it. The copy inherits the source's server URL,
+     * client ID, auth and token endpoints, but starts in DISCONNECTED state.
+     *
+     * @param sourceName name of the profile to duplicate
+     * @return the newly created profile, or {@code null} if no profile with
+     *         {@code sourceName} exists
+     */
+    public synchronized ConnectionProfile duplicateProfile(String sourceName) {
+        var idx = ConnectionProfiles.indexByName(profiles, sourceName);
+        if (idx < 0) {
+            return null;
+        }
+        var src = profiles.get(idx);
+        var newName = makeUniqueCopyName(sourceName);
+        var copy = new ConnectionProfile(newName, src.getServerUrl(), src.getClientId());
+        profiles.add(copy);
+        saveProfilePrefs(copy, getAuthEndpoint(sourceName), getTokenEndpoint(sourceName));
+        saveProfileList();
+        return copy;
+    }
+
+    /**
+     * Resets the built-in Architeezy profile to factory defaults. If the profile
+     * does not exist, it is created. Tokens stored under the previous server URL
+     * (if different) are cleared.
+     *
+     * @return the (re)created default profile
+     */
+    public synchronized ConnectionProfile resetDefaultProfile() {
+        var defaultProfile = new ConnectionProfile(
+                DEFAULT_PROFILE_NAME, DEFAULT_SERVER_URL, DEFAULT_CLIENT_ID);
+        var idx = ConnectionProfiles.indexByName(profiles, DEFAULT_PROFILE_NAME);
+        if (idx >= 0) {
+            var existing = profiles.get(idx);
+            if (!existing.getServerUrl().equals(defaultProfile.getServerUrl())) {
+                tokenStore.clearTokens(existing.getServerUrl());
+            }
+            profiles.set(idx, defaultProfile);
+            if (activeProfile != null && activeProfile.getName().equals(DEFAULT_PROFILE_NAME)) {
+                activeProfile = defaultProfile;
+            }
+        } else {
+            profiles.add(defaultProfile);
+            if (activeProfile == null) {
+                activeProfile = defaultProfile;
+                prefs.setValue(PREF_ACTIVE_PROFILE, DEFAULT_PROFILE_NAME);
+            }
+        }
+        saveProfilePrefs(defaultProfile, DEFAULT_AUTH_ENDPOINT, DEFAULT_TOKEN_ENDPOINT);
+        saveProfileList();
+        prefs.setValue(PREF_DEFAULT_PROFILE_CREATED, true);
+        return defaultProfile;
+    }
+
+    private String makeUniqueCopyName(String base) {
+        var candidate = base + " (copy)"; //$NON-NLS-1$
+        if (ConnectionProfiles.indexByName(profiles, candidate) < 0) {
+            return candidate;
+        }
+        var i = 2;
+        while (ConnectionProfiles.indexByName(profiles, base + " (copy " + i + ")") >= 0) { //$NON-NLS-1$ //$NON-NLS-2$
+            i++;
+        }
+        return base + " (copy " + i + ")"; //$NON-NLS-1$ //$NON-NLS-2$
+    }
+
+    /**
      * Removes a connection profile by name.
      *
      * @param profileName the name of the profile to remove
