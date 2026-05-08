@@ -433,16 +433,18 @@ public class ProfileSelectionPage extends WizardPage {
         var profile = isNewMode ? null : getSelectedProfile();
         if (profile == null) {
             setPageComplete(false);
-            setMessage(getDescription());
+            setMessage(null);
             return;
         }
         var connected = profile.getStatus() == ProfileStatus.CONNECTED;
         if (!connected) {
             setPageComplete(!requireAuthentication);
-            setMessage(Messages.WizardMessages_notSignedIn, requireAuthentication ? ERROR : WARNING);
+            var msg = requireAuthentication ? Messages.WizardMessages_signInRequired
+                    : Messages.WizardMessages_notSignedIn;
+            setMessage(msg, requireAuthentication ? ERROR : WARNING);
         } else {
             setPageComplete(true);
-            setMessage(getDescription());
+            setMessage(null);
         }
     }
 

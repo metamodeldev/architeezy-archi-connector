@@ -176,6 +176,8 @@ public final class Messages extends NLS {
     // WizardMessages
     public static String WizardMessages_notSignedIn;
 
+    public static String WizardMessages_signInRequired;
+
     // ModelTreeDecorator
     public static String Decorator_updateTooltip;
 
